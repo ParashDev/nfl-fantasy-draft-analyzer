@@ -1,0 +1,122 @@
+name: Update Dashboard Data
+
+# Runs weekly on Wednesday at 6 AM UTC during NFL season
+# nflverse publishes weekly stats by Tuesday night
+# Season/mode auto-detected from Sleeper API -- no manual config needed
+on:
+  schedule:
+    - cron: "0 6 * * 3"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/**"
+      - "requirements.txt"
+      - "index.html"
+  workflow_dispatch:
+    inputs:
+      force_refresh:
+        description: "Delete cached data and re-download everything"
+        required: false
+        default: "false"
+        type: boolean
+      override_season:
+        description: "Force a specific season year (e.g. 2024). Leave blank for auto-detect."
+        required: false
+        default: ""
+        type: string
+      override_mode:
+        description: "Force a specific mode (static or live). Leave blank for auto-detect."
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    env:
+      NFL_SEASON_YEAR: ${{ github.event.inputs.override_season }}
+      NFL_MODE: ${{ github.event.inputs.override_mode }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Print detected season info for the workflow log
+      - name: Detect season
+        run: |
+          python -c "
+          from scripts.config import SEASON_YEAR, MODE
+          print(f'Season: {SEASON_YEAR}')
+          print(f'Mode: {MODE}')
+          "
+
+      # Cache raw downloads so completed seasons don't re-download
+      - name: Restore data cache
+        if: ${{ github.event.inputs.force_refresh != 'true' }}
+        uses: actions/cache@v4
+        with:
+          path: data/raw
+          # Cache per detected season -- new season = fresh download
+          key: nfl-raw-v1
+          restore-keys: |
+            nfl-raw-
+
+      - name: Force clear cache
+        if: ${{ github.event.inputs.force_refresh == 'true' }}
+        run: rm -rf data/raw data/cleaned
+
+      - name: Run pipeline -- 01_clean.py
+        run: python scripts/01_clean.py
+
+      - name: Run pipeline -- 03_fetch_adp.py
+        run: python scripts/03_fetch_adp.py
+        continue-on-error: true
+
+      - name: Run pipeline -- 02_transform.py
+        run: python scripts/02_transform.py
+
+      - name: Verify output
+        run: |
+          if [ ! -f data/dashboard_data.json ]; then
+            echo "ERROR: dashboard_data.json was not generated"
+            exit 1
+          fi
+          echo "Dashboard data size: $(wc -c < data/dashboard_data.json) bytes"
+
+      - name: Prepare Pages artifact
+        run: |
+          mkdir -p _site/data
+          cp index.html _site/
+          cp data/dashboard_data.json _site/data/
+          if [ -d docs ]; then cp -r docs _site/docs; fi
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

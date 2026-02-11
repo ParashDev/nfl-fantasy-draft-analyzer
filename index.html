@@ -1,0 +1,3859 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NFL Fantasy Draft Analyzer</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Source+Serif+4:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            base: '#ffffff',
+            surface: '#f8fafc',
+            'surface-hover': '#f1f5f9',
+            chalk: '#0f172a',
+            accent: '#16a34a',
+            warn: '#dc2626',
+            gold: '#ca8a04',
+            blue: '#2563eb',
+            purple: '#7c3aed',
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <style>
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: #ffffff;
+      color: #0f172a;
+    }
+
+    /* Force all text black -- Tailwind CDN overrides inherited color */
+    h1, h2, h3, h4, h5, h6, p, span, td, th, a, li, div, label {
+      color: #0f172a;
+    }
+
+    .font-serif {
+      font-family: 'Source Serif 4', serif;
+    }
+
+    @keyframes pulse-live {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .live-pulse {
+      animation: pulse-live 2s ease-in-out infinite;
+    }
+
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .fade-in {
+      animation: fade-in 0.6s ease-out forwards;
+      opacity: 0;
+    }
+
+    .fade-in-delay-1 { animation-delay: 0.1s; }
+    .fade-in-delay-2 { animation-delay: 0.2s; }
+    .fade-in-delay-3 { animation-delay: 0.3s; }
+    .fade-in-delay-4 { animation-delay: 0.4s; }
+
+    /* Circular progress indicator */
+    .circular-progress {
+      position: relative;
+      width: 80px;
+      height: 80px;
+    }
+
+    .circular-progress svg {
+      transform: rotate(-90deg);
+    }
+
+    .circular-progress .progress-ring {
+      transition: stroke-dashoffset 0.8s ease-out;
+    }
+
+    .circular-progress .value {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1rem;
+    }
+
+    /* Terminal styling */
+    .terminal {
+      background: #0d1117;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 0.8125rem;
+      line-height: 1.6;
+    }
+
+    .terminal .prompt {
+      color: #52b788;
+    }
+
+    .terminal .output {
+      color: #8b949e;
+    }
+
+    .terminal .highlight {
+      color: #d4a843;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #f8fafc;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    /* Nav active link */
+    .nav-link {
+      position: relative;
+      transition: color 0.2s ease;
+    }
+
+    .nav-link.active {
+      color: #16a34a;
+    }
+
+    .nav-link.active::after {
+      content: '';
+      position: absolute;
+      bottom: -2px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: #16a34a;
+    }
+
+    /* Pipeline arrow (legacy) */
+    .pipeline-arrow::after {
+      content: '';
+      display: inline-block;
+      width: 0;
+      height: 0;
+      border-top: 6px solid transparent;
+      border-bottom: 6px solid transparent;
+      border-left: 8px solid #16a34a;
+      margin-left: 8px;
+    }
+
+    /* Pipeline flow redesign */
+    .pipeline-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 0;
+      position: relative;
+    }
+    .pipeline-node {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      position: relative;
+      padding: 0 8px;
+    }
+    .pipeline-icon-ring {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 12px;
+      position: relative;
+      z-index: 2;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .pipeline-icon-ring svg {
+      width: 24px;
+      height: 24px;
+    }
+    .pipeline-node-label {
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 4px;
+      color: #6b7280;
+    }
+    .pipeline-node-value {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #0f172a;
+    }
+    .pipeline-node-sub {
+      font-size: 0.65rem;
+      color: #6b7280;
+      margin-top: 2px;
+    }
+    .pipeline-grid.pipeline-opt-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+    /* Connector line between nodes */
+    .pipeline-node:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      top: 28px;
+      left: calc(50% + 32px);
+      right: calc(-50% + 32px);
+      height: 2px;
+      background: #cbd5e1;
+      z-index: 1;
+    }
+    /* Arrow head on connector */
+    .pipeline-node:not(:last-child)::before {
+      content: '';
+      position: absolute;
+      top: 23px;
+      right: calc(-50% + 28px);
+      width: 0;
+      height: 0;
+      border-top: 5px solid transparent;
+      border-bottom: 5px solid transparent;
+      border-left: 7px solid #94a3b8;
+      z-index: 3;
+    }
+    .pipeline-opt-node.is-dashed:not(:last-child)::after {
+      background: none;
+      border-top: 2px dashed #cbd5e1;
+      height: 0;
+    }
+    .pipeline-opt-node.is-dashed:not(:last-child)::before {
+      border-left-color: #cbd5e1;
+    }
+    /* Step number badge */
+    .pipeline-step {
+      position: absolute;
+      top: -6px;
+      right: -2px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #0f172a;
+      color: #fff;
+      font-size: 0.6rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 4;
+    }
+    @media (max-width: 768px) {
+      .pipeline-grid {
+        grid-template-columns: 1fr;
+        gap: 0;
+      }
+      .pipeline-grid.pipeline-opt-grid {
+        grid-template-columns: 1fr;
+      }
+      .pipeline-node {
+        flex-direction: row;
+        text-align: left;
+        align-items: center;
+        padding: 10px 0;
+        gap: 14px;
+      }
+      .pipeline-icon-ring {
+        width: 44px;
+        height: 44px;
+        flex-shrink: 0;
+        margin-bottom: 0;
+      }
+      .pipeline-icon-ring svg {
+        width: 18px;
+        height: 18px;
+      }
+      .pipeline-step {
+        width: 16px;
+        height: 16px;
+        font-size: 0.55rem;
+        top: -4px;
+        right: -4px;
+      }
+      .pipeline-node-label {
+        margin-bottom: 0;
+      }
+      .pipeline-node-value {
+        font-size: 0.8rem;
+      }
+      /* Vertical connector line between nodes */
+      .pipeline-node:not(:last-child)::after {
+        top: auto;
+        bottom: -2px;
+        left: 22px;
+        right: auto;
+        width: 2px;
+        height: 4px;
+        background: #cbd5e1;
+      }
+      /* Hide horizontal arrow heads on mobile */
+      .pipeline-node:not(:last-child)::before {
+        display: none;
+      }
+    }
+
+    /* Table row hover */
+    .data-row:hover {
+      background: #f1f5f9;
+    }
+
+    /* Score bar */
+    .score-bar {
+      height: 6px;
+      border-radius: 3px;
+      background: #e2e8f0;
+      overflow: hidden;
+    }
+
+    .score-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.6s ease-out;
+    }
+
+    /* Position badge */
+    .pos-badge {
+      width: 28px;
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.6875rem;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    /* Tab button */
+    .tab-btn {
+      transition: all 0.2s ease;
+    }
+
+    .tab-btn.active {
+      background: #16a34a;
+      color: #ffffff;
+    }
+
+    /* Value rating badges */
+    .value-steal { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+    .value-reach { background: #fee2e2; color: #dc2626; border: 1px solid #fecaca; }
+    .value-fair { background: #fef9c3; color: #a16207; border: 1px solid #fef08a; }
+
+    /* Chart container consistent sizing */
+    .chart-wrap {
+      position: relative;
+      width: 100%;
+    }
+
+    .chart-wrap canvas {
+      width: 100% !important;
+    }
+
+    /* Mock Draft styles */
+    .draft-board-grid {
+      display: grid;
+      font-size: 0.6875rem;
+      gap: 1px;
+      background: #e2e8f0;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .draft-cell {
+      background: #fff;
+      padding: 3px 4px;
+      text-align: center;
+      min-height: 32px;
+      min-width: 44px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      line-height: 1.2;
+      overflow: hidden;
+    }
+
+    @media (min-width: 640px) {
+      .draft-cell {
+        padding: 4px 5px;
+        min-height: 36px;
+        min-width: 50px;
+      }
+    }
+
+    .draft-cell-header {
+      background: #f1f5f9;
+      font-weight: 700;
+      font-size: 0.625rem;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .draft-cell-round {
+      background: #f8fafc;
+      font-weight: 600;
+      color: #64748b;
+      font-size: 0.625rem;
+    }
+
+    .draft-cell.user-col {
+      background: #f0fdf4;
+    }
+
+    .draft-cell.user-col.draft-cell-header {
+      background: #dcfce7;
+      color: #15803d;
+    }
+
+    .draft-cell.current-pick {
+      outline: 2px solid #16a34a;
+      outline-offset: -2px;
+      z-index: 1;
+    }
+
+    .pick-pos {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 9999px;
+      font-size: 0.625rem;
+      font-weight: 700;
+      color: #fff !important;
+      text-align: center;
+      line-height: 1.4;
+      letter-spacing: 0.02em;
+    }
+
+    .draft-cell .pick-pos {
+      padding: 1px 5px;
+      font-size: 0.5625rem;
+    }
+
+    .draft-cell .pick-name {
+      font-size: 0.5625rem;
+      color: #0f172a;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+
+    .draft-log-entry {
+      padding: 5px 8px;
+      font-size: 0.8125rem;
+      border-bottom: 1px solid #f1f5f9;
+    }
+
+    @media (min-width: 640px) {
+      .draft-log-entry {
+        padding: 6px 10px;
+        font-size: 0.875rem;
+      }
+    }
+
+    .draft-log-entry:last-child {
+      border-bottom: none;
+    }
+
+    .draft-pos-btn {
+      transition: all 0.15s ease;
+    }
+
+    .draft-pos-btn:hover {
+      border-color: #16a34a;
+    }
+
+    .draft-pos-btn.active {
+      background: #16a34a;
+      color: #fff;
+      border-color: #16a34a;
+    }
+
+    .pick-slot-btn {
+      width: 44px;
+      height: 44px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      background: #fff;
+      color: #0f172a;
+    }
+
+    .pick-slot-btn:hover {
+      border-color: #16a34a;
+      background: #f0fdf4;
+    }
+
+    .pick-slot-btn.selected {
+      background: #16a34a;
+      color: #fff;
+      border-color: #16a34a;
+    }
+
+    .speed-btn {
+      padding: 4px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      font-size: 0.6875rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: #fff;
+      color: #0f172a;
+      transition: all 0.15s ease;
+    }
+
+    .speed-btn.active {
+      background: #0f172a;
+      color: #fff;
+      border-color: #0f172a;
+    }
+
+    .roster-slot {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 0.875rem;
+    }
+
+    .roster-slot .slot-label {
+      width: 36px;
+      font-weight: 700;
+      font-size: 0.75rem;
+      color: #64748b;
+      flex-shrink: 0;
+    }
+
+    .roster-slot .slot-player {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .available-row {
+      cursor: pointer;
+      transition: background 0.1s ease;
+    }
+
+    .available-row:hover {
+      background: #f0fdf4;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-base text-black antialiased">
+
+  <!-- ============================================================
+       SECTION 0: FIXED NAVIGATION
+       ============================================================ -->
+  <nav id="main-nav" class="fixed top-0 left-0 right-0 z-50 backdrop-blur-md bg-white/90 border-b border-slate-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-14">
+        <div class="flex items-center gap-3">
+          <a href="#" class="font-serif font-bold text-lg text-black tracking-tight">NFL Draft Analyzer</a>
+          <div id="live-badge" class="hidden flex items-center gap-1.5 ml-2 px-2 py-0.5 rounded-full bg-accent/10 border border-accent/30">
+            <span class="w-2 h-2 rounded-full bg-accent live-pulse"></span>
+            <span class="text-accent text-xs font-bold tracking-wider uppercase">LIVE</span>
+          </div>
+        </div>
+        <div class="hidden md:flex items-center gap-6 text-sm">
+          <a href="#the-brief" class="nav-link text-black hover:text-black" data-section="the-brief">The Brief</a>
+          <a href="#raw-data" class="nav-link text-black hover:text-black" data-section="raw-data">Raw Data</a>
+          <a href="#pipeline" class="nav-link text-black hover:text-black" data-section="pipeline">Pipeline</a>
+          <a href="#draft-board" class="nav-link text-black hover:text-black" data-section="draft-board">Draft Board</a>
+          <a href="#auction-board" class="nav-link text-black hover:text-black" data-section="auction-board">Auction</a>
+          <a href="#mock-draft" class="nav-link text-black hover:text-black" data-section="mock-draft">Mock Draft</a>
+          <a href="#takeaway" class="nav-link text-black hover:text-black" data-section="takeaway">Takeaway</a>
+        </div>
+        <!-- Mobile menu button -->
+        <button id="mobile-menu-btn" class="md:hidden p-2 text-black hover:text-black" aria-label="Open navigation">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+      </div>
+      <!-- Mobile nav -->
+      <div id="mobile-menu" class="hidden md:hidden pb-4 space-y-2">
+        <a href="#the-brief" class="block text-sm text-black hover:text-black py-1">The Brief</a>
+        <a href="#raw-data" class="block text-sm text-black hover:text-black py-1">Raw Data</a>
+        <a href="#pipeline" class="block text-sm text-black hover:text-black py-1">Pipeline</a>
+        <a href="#draft-board" class="block text-sm text-black hover:text-black py-1">Draft Board</a>
+        <a href="#auction-board" class="block text-sm text-black hover:text-black py-1">Auction</a>
+        <a href="#mock-draft" class="block text-sm text-black hover:text-black py-1">Mock Draft</a>
+        <a href="#takeaway" class="block text-sm text-black hover:text-black py-1">Takeaway</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Spacer for fixed nav -->
+  <div class="h-14"></div>
+
+  <!-- Loading state -->
+  <div id="loading-screen" class="flex items-center justify-center min-h-[60vh]">
+    <div class="text-center">
+      <div class="w-8 h-8 border-2 border-accent/30 border-t-accent rounded-full animate-spin mx-auto mb-4"></div>
+      <p class="text-black text-sm">Loading draft data...</p>
+    </div>
+  </div>
+
+  <!-- Error state -->
+  <div id="error-screen" class="hidden flex items-center justify-center min-h-[60vh]">
+    <div class="text-center max-w-md px-6">
+      <div class="w-12 h-12 rounded-full bg-warn/10 border border-warn/30 flex items-center justify-center mx-auto mb-4">
+        <svg class="w-6 h-6 text-warn" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+      </div>
+      <h3 class="font-serif text-xl font-bold mb-2">Could not load dashboard data</h3>
+      <p class="text-black text-sm mb-4">Make sure the data pipeline has been run and <code class="text-accent/80">data/dashboard_data.json</code> exists.</p>
+      <p class="text-black text-xs">Run: <code>python scripts/01_clean.py && python scripts/02_transform.py</code></p>
+    </div>
+  </div>
+
+  <!-- Main content (hidden until data loads) -->
+  <main id="main-content" class="hidden">
+
+    <!-- ============================================================
+         SECTION 1: THE BRIEF (Hero)
+         ============================================================ -->
+    <section id="the-brief" class="py-16 md:py-24 border-b border-slate-100">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-10 items-start">
+          <!-- Left: Title, description, and highlights (3/5 width) -->
+          <div class="lg:col-span-3">
+            <div class="fade-in">
+              <span class="block text-accent text-xs font-bold tracking-wider uppercase mb-4">CASE STUDY</span>
+            </div>
+            <h1 class="fade-in fade-in-delay-1 font-serif text-4xl md:text-5xl font-bold text-black leading-tight mb-4">
+              NFL Fantasy Draft Analyzer
+            </h1>
+            <p id="hero-subtitle" class="fade-in fade-in-delay-2 text-lg md:text-xl text-black mb-6 leading-relaxed"></p>
+            <p id="hero-scope" class="fade-in fade-in-delay-2 text-black mb-8 leading-relaxed"></p>
+            <div id="hero-live-note" class="hidden fade-in fade-in-delay-3 text-sm text-black mb-6 flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-accent live-pulse"></span>
+              <span id="hero-live-text"></span>
+            </div>
+            <div id="hero-pills" class="fade-in fade-in-delay-3 flex flex-wrap gap-2 mb-8">
+              <!-- Tech pills injected by JS -->
+            </div>
+
+            <!-- Key highlights -->
+            <div id="hero-highlights" class="fade-in fade-in-delay-3">
+              <!-- Injected by JS: season highlights and key findings -->
+            </div>
+          </div>
+
+          <!-- Right: Top picks snapshot (2/5 width) -->
+          <div id="hero-snapshot" class="lg:col-span-2 fade-in fade-in-delay-2 hidden lg:block">
+            <!-- Injected by JS: top pick per position with headshots -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 2: THE RAW DATA
+         ============================================================ -->
+    <section id="raw-data" class="py-16 md:py-24 border-b border-slate-100">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <span class="block text-center text-accent text-xs font-bold tracking-wider uppercase mb-4">SECTION 01</span>
+        <h2 class="font-serif text-3xl md:text-4xl font-bold text-black mb-10 text-center">The Raw Data</h2>
+
+        <!-- KPI Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
+          <div class="bg-white shadow-sm border border-slate-200 rounded-lg p-5">
+            <p class="text-black text-sm mb-1">Players Analyzed</p>
+            <p id="kpi-players" class="text-3xl font-bold text-black">--</p>
+          </div>
+          <div class="bg-white shadow-sm border border-slate-200 rounded-lg p-5">
+            <p class="text-black text-sm mb-1">Data Sources</p>
+            <p id="kpi-sources" class="text-3xl font-bold text-black">--</p>
+          </div>
+          <div class="bg-white shadow-sm border border-slate-200 rounded-lg p-5">
+            <p class="text-black text-sm mb-1">Games Tracked</p>
+            <p id="kpi-games" class="text-3xl font-bold text-black">--</p>
+          </div>
+        </div>
+
+        <!-- Draft Format Card -->
+        <div class="bg-white shadow-sm border border-slate-200 rounded-lg p-6 mb-10">
+          <h3 class="font-serif text-xl font-bold mb-4">Draft Format</h3>
+          <p id="draft-format-summary" class="text-black text-sm mb-6"></p>
+          <div id="roster-slots-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            <!-- Roster slot badges injected by JS -->
+          </div>
+        </div>
+
+        <!-- Terminal -->
+        <div class="terminal rounded-lg border border-slate-200 overflow-hidden">
+          <div class="flex items-center gap-2 px-4 py-2.5 bg-[#161b22] border-b border-slate-200">
+            <span class="w-3 h-3 rounded-full bg-[#ff5f57]"></span>
+            <span class="w-3 h-3 rounded-full bg-[#febc2e]"></span>
+            <span class="w-3 h-3 rounded-full bg-[#28c840]"></span>
+            <span class="text-black text-xs ml-2">data_quality.sh</span>
+          </div>
+          <div id="terminal-content" class="p-4 overflow-x-auto">
+            <!-- Terminal output injected by JS -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 3: THE PIPELINE
+         ============================================================ -->
+    <section id="pipeline" class="py-16 md:py-24 border-b border-slate-100">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <span class="block text-center text-accent text-xs font-bold tracking-wider uppercase mb-4">SECTION 02</span>
+        <h2 class="font-serif text-3xl md:text-4xl font-bold text-black mb-10 text-center">The Pipeline</h2>
+
+        <!-- Pipeline flow diagram -->
+        <div class="bg-white shadow-sm border border-slate-200 rounded-xl p-8 mb-10">
+          <h3 class="font-serif text-lg font-bold mb-2">Data Flow</h3>
+          <p class="text-sm mb-8" style="color:#6b7280;">Primary ETL pipeline from raw NFL data to interactive dashboard</p>
+
+          <!-- Primary pipeline -->
+          <div class="pipeline-grid mb-10">
+            <div class="pipeline-node">
+              <div class="pipeline-icon-ring" style="background:#f8fafc; border: 2px solid #cbd5e1;">
+                <span class="pipeline-step">1</span>
+                <svg fill="none" stroke="#0f172a" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+              </div>
+              <p class="pipeline-node-label">Source</p>
+              <p class="pipeline-node-value">nflverse</p>
+              <p class="pipeline-node-sub">Stats + Play-by-Play</p>
+            </div>
+            <div class="pipeline-node">
+              <div class="pipeline-icon-ring" style="background:#f8fafc; border: 2px solid #cbd5e1;">
+                <span class="pipeline-step">2</span>
+                <svg fill="none" stroke="#0f172a" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
+              </div>
+              <p class="pipeline-node-label">Clean</p>
+              <p class="pipeline-node-value">01_clean.py</p>
+              <p class="pipeline-node-sub">Normalize + Filter</p>
+            </div>
+            <div class="pipeline-node">
+              <div class="pipeline-icon-ring" style="background:#f8fafc; border: 2px solid #cbd5e1;">
+                <span class="pipeline-step">3</span>
+                <svg fill="none" stroke="#0f172a" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+              </div>
+              <p class="pipeline-node-label">Output</p>
+              <p class="pipeline-node-value">7 CSVs</p>
+              <p class="pipeline-node-sub">Cleaned Datasets</p>
+            </div>
+            <div class="pipeline-node">
+              <div class="pipeline-icon-ring" style="background:#f8fafc; border: 2px solid #cbd5e1;">
+                <span class="pipeline-step">4</span>
+                <svg fill="none" stroke="#0f172a" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+              </div>
+              <p class="pipeline-node-label">Transform</p>
+              <p class="pipeline-node-value">02_transform.py</p>
+              <p class="pipeline-node-sub">Aggregate + Score</p>
+            </div>
+            <div class="pipeline-node">
+              <div class="pipeline-icon-ring" style="background:#f8fafc; border: 2px solid #cbd5e1;">
+                <span class="pipeline-step">5</span>
+                <svg fill="none" stroke="#0f172a" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/></svg>
+              </div>
+              <p class="pipeline-node-label">JSON</p>
+              <p class="pipeline-node-value">dashboard_data</p>
+              <p class="pipeline-node-sub">Single Data File</p>
+            </div>
+            <div class="pipeline-node">
+              <div class="pipeline-icon-ring" style="background:#f8fafc; border: 2px solid #cbd5e1;">
+                <span class="pipeline-step">6</span>
+                <svg fill="none" stroke="#0f172a" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+              </div>
+              <p class="pipeline-node-label">Render</p>
+              <p class="pipeline-node-value">Dashboard</p>
+              <p class="pipeline-node-sub">Interactive UI</p>
+            </div>
+          </div>
+
+          <!-- Divider -->
+          <div class="flex items-center gap-4 mb-8">
+            <div class="flex-1 border-t border-dashed border-slate-300"></div>
+            <span class="text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full border border-slate-300" style="color:#6b7280;">Optional Enrichment</span>
+            <div class="flex-1 border-t border-dashed border-slate-300"></div>
+          </div>
+
+          <!-- Optional ADP pipeline -->
+          <div id="adp-pipeline" class="pipeline-grid pipeline-opt-grid" style="max-width: 560px; margin: 0 auto;">
+            <div class="pipeline-node pipeline-opt-node" id="adp-pipeline-source">
+              <div class="pipeline-icon-ring" style="background:#f8fafc; border: 2px solid #cbd5e1;">
+                <svg fill="none" stroke="#0f172a" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              </div>
+              <p class="pipeline-node-label">API Source</p>
+              <p class="pipeline-node-value">Sleeper API</p>
+              <p class="pipeline-node-sub">Player Metadata</p>
+            </div>
+            <div class="pipeline-node pipeline-opt-node" id="adp-pipeline-script">
+              <div class="pipeline-icon-ring" style="background:#f8fafc; border: 2px solid #cbd5e1;">
+                <svg fill="none" stroke="#0f172a" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              </div>
+              <p class="pipeline-node-label">Enrich</p>
+              <p class="pipeline-node-value">03_fetch_adp.py</p>
+              <p class="pipeline-node-sub">Fetch + Merge</p>
+            </div>
+            <div class="pipeline-node pipeline-opt-node" id="adp-pipeline-output">
+              <div class="pipeline-icon-ring" style="background:#f8fafc; border: 2px solid #cbd5e1;">
+                <svg fill="none" stroke="#0f172a" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+              </div>
+              <p class="pipeline-node-label">Output</p>
+              <p class="pipeline-node-value">ADP + Images</p>
+              <p class="pipeline-node-sub">Draft Rankings</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Scoring Formats -->
+        <div class="bg-white shadow-sm border border-slate-200 rounded-lg p-6">
+          <h3 class="font-serif text-lg font-bold mb-6">Scoring Formats</h3>
+          <div id="scoring-formats" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Scoring cards injected by JS -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 4: THE DRAFT BOARD
+         ============================================================ -->
+    <section id="draft-board" class="py-16 md:py-24 border-b border-slate-100">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <span class="block text-center text-accent text-xs font-bold tracking-wider uppercase mb-4">SECTION 03</span>
+        <h2 class="font-serif text-3xl md:text-4xl font-bold text-black mb-2 text-center">The Draft Board</h2>
+        <p class="text-sm font-bold uppercase tracking-wider mb-10 text-center" style="color:#6b7280;">Snake Draft Format</p>
+
+        <!-- 4a: Position FPPG KPIs -->
+        <div id="position-kpi-row" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+          <!-- Injected by JS -->
+        </div>
+
+        <!-- 4b: Position Tabs -->
+        <div class="mb-8">
+          <div class="flex flex-wrap justify-center gap-2 mb-6" id="position-tabs">
+            <button class="tab-btn active px-4 py-2 rounded-full text-sm font-bold bg-accent text-base" data-tab="all">ALL</button>
+            <button class="tab-btn px-4 py-2 rounded-full text-sm font-bold bg-surface border border-slate-200 text-black hover:text-black" data-tab="QB">QB</button>
+            <button class="tab-btn px-4 py-2 rounded-full text-sm font-bold bg-surface border border-slate-200 text-black hover:text-black" data-tab="RB">RB</button>
+            <button class="tab-btn px-4 py-2 rounded-full text-sm font-bold bg-surface border border-slate-200 text-black hover:text-black" data-tab="WR">WR</button>
+            <button class="tab-btn px-4 py-2 rounded-full text-sm font-bold bg-surface border border-slate-200 text-black hover:text-black" data-tab="TE">TE</button>
+            <button class="tab-btn px-4 py-2 rounded-full text-sm font-bold bg-surface border border-slate-200 text-black hover:text-black" data-tab="FLEX">FLEX</button>
+            <button class="tab-btn px-4 py-2 rounded-full text-sm font-bold bg-surface border border-slate-200 text-black hover:text-black" data-tab="K">K</button>
+            <button class="tab-btn px-4 py-2 rounded-full text-sm font-bold bg-surface border border-slate-200 text-black hover:text-black" data-tab="DEF">DEF</button>
+          </div>
+        </div>
+
+        <!-- 4c: Top Overall Rankings Table (ALL tab) -->
+        <div id="tab-all" class="tab-content">
+          <div class="bg-surface border border-slate-200 rounded-lg overflow-hidden mb-10">
+            <div class="px-5 py-4 border-b border-slate-200">
+              <h3 class="font-serif text-lg font-bold">Top Overall Rankings</h3>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-base text-black">
+                <thead>
+                  <tr class="text-left text-black text-xs uppercase tracking-wider border-b border-slate-100">
+                    <th class="px-5 py-3 w-16">Rank</th>
+                    <th class="px-5 py-3">Player</th>
+                    <th class="px-5 py-3 w-20">Pos</th>
+                    <th class="px-5 py-3 w-20 hidden sm:table-cell">Team</th>
+                    <th class="px-5 py-3 w-24 text-right">FPPG</th>
+                    <th class="px-5 py-3 w-32 text-right hidden md:table-cell">Score</th>
+                  </tr>
+                </thead>
+                <tbody id="overall-rankings-body">
+                  <!-- Rows injected by JS -->
+                </tbody>
+              </table>
+            </div>
+            <div id="show-more-container" class="px-5 py-3 border-t border-slate-100 text-center">
+              <button id="show-more-btn" class="text-accent text-sm font-medium hover:text-accent/80 transition-colors">
+                Show More
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4d: Position Recommendation Panels (one per position, toggled by tabs) -->
+        <div id="tab-QB" class="tab-content hidden"></div>
+        <div id="tab-RB" class="tab-content hidden"></div>
+        <div id="tab-WR" class="tab-content hidden"></div>
+        <div id="tab-TE" class="tab-content hidden"></div>
+        <div id="tab-FLEX" class="tab-content hidden"></div>
+        <div id="tab-K" class="tab-content hidden"></div>
+        <div id="tab-DEF" class="tab-content hidden"></div>
+
+        <!-- 4e: Charts -->
+        <div class="grid grid-cols-1 gap-8 mb-10">
+          <!-- Chart 1: FPPG by Position -->
+          <div class="bg-surface border border-slate-200 rounded-lg p-4">
+            <h3 class="font-serif text-base font-bold mb-4" style="color:#000 !important;">Fantasy Points Per Game by Position</h3>
+            <div class="chart-wrap" style="height: 500px;">
+              <canvas id="chart-fppg-position"></canvas>
+            </div>
+          </div>
+          <!-- Chart 2: Weekly Scoring Trends -->
+          <div class="bg-surface border border-slate-200 rounded-lg p-4">
+            <h3 class="font-serif text-base font-bold mb-4" style="color:#000 !important;">Weekly Scoring Trends</h3>
+            <div class="chart-wrap" style="height: 500px;">
+              <canvas id="chart-weekly-trends"></canvas>
+            </div>
+          </div>
+          <!-- Charts 3 & 4: Side by side -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="bg-surface border border-slate-200 rounded-lg p-4">
+            <h3 class="font-serif text-base font-bold mb-4" style="color:#000 !important;">Position Scarcity Analysis</h3>
+            <div class="chart-wrap" style="height: 400px;">
+              <canvas id="chart-scarcity"></canvas>
+            </div>
+          </div>
+          <div class="bg-surface border border-slate-200 rounded-lg p-4">
+            <h3 class="font-serif text-base font-bold mb-4" style="color:#000 !important;">ADP Value Finder</h3>
+            <div id="adp-section" class="hidden chart-wrap" style="height: 400px;">
+              <canvas id="chart-adp"></canvas>
+            </div>
+            <div id="adp-fallback" class="hidden flex items-center justify-center" style="height: 400px;">
+              <div class="text-center">
+                <div class="w-10 h-10 rounded-full bg-surface-hover border border-slate-200 flex items-center justify-center mx-auto mb-3">
+                  <svg class="w-5 h-5 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                </div>
+                <p class="text-black text-sm mb-1">ADP data not available</p>
+                <p class="text-black text-xs">Run <code class="text-accent/60">scripts/03_fetch_adp.py</code> to enable ADP comparison</p>
+              </div>
+            </div>
+          </div>
+          </div>
+        </div>
+
+        <!-- 4e2: Sleepers & Players to Watch -->
+        <div class="mb-10">
+          <div class="mb-2">
+            <h3 class="font-serif text-2xl font-bold" style="color:#000 !important;">Sleepers & Players to Watch</h3>
+          </div>
+          <p class="text-base mb-8 text-center" style="color:#000;">Under-the-radar picks with breakout potential for next season. These players sit outside the top recommendations but show strong underlying metrics -- late-season surges, high-ceiling weeks, and ADP value gaps.</p>
+          <div class="flex flex-wrap justify-center gap-2 mb-8">
+            <button class="sleeper-tab px-4 py-2 text-sm font-bold rounded-lg border-2 border-slate-200 bg-white transition-colors" style="color:#000;" data-sleeper-pos="QB">QB</button>
+            <button class="sleeper-tab px-4 py-2 text-sm font-bold rounded-lg border-2 border-slate-200 bg-white transition-colors" style="color:#000;" data-sleeper-pos="RB">RB</button>
+            <button class="sleeper-tab px-4 py-2 text-sm font-bold rounded-lg border-2 border-slate-200 bg-white transition-colors" style="color:#000;" data-sleeper-pos="WR">WR</button>
+            <button class="sleeper-tab px-4 py-2 text-sm font-bold rounded-lg border-2 border-slate-200 bg-white transition-colors" style="color:#000;" data-sleeper-pos="TE">TE</button>
+            <button class="sleeper-tab px-4 py-2 text-sm font-bold rounded-lg border-2 border-slate-200 bg-white transition-colors" style="color:#000;" data-sleeper-pos="K">K</button>
+            <button class="sleeper-tab px-4 py-2 text-sm font-bold rounded-lg border-2 border-slate-200 bg-white transition-colors" style="color:#000;" data-sleeper-pos="DEF">DEF</button>
+          </div>
+          <div id="sleeper-QB" class="sleeper-content hidden"></div>
+          <div id="sleeper-RB" class="sleeper-content hidden"></div>
+          <div id="sleeper-WR" class="sleeper-content hidden"></div>
+          <div id="sleeper-TE" class="sleeper-content hidden"></div>
+          <div id="sleeper-K" class="sleeper-content hidden"></div>
+          <div id="sleeper-DEF" class="sleeper-content hidden"></div>
+        </div>
+
+        <!-- 4f: Draft Strategy Guide -->
+        <div class="bg-white shadow-sm border border-slate-200 rounded-lg p-6">
+          <h3 class="font-serif text-xl font-bold mb-6">Draft Strategy Guide</h3>
+          <div id="strategy-guide" class="space-y-4">
+            <!-- Injected by JS -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 5: AUCTION DRAFT VALUES
+         ============================================================ -->
+    <section id="auction-board" class="py-16 md:py-24 border-b border-slate-100">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <span class="block text-center text-accent text-xs font-bold tracking-wider uppercase mb-4">SECTION 04</span>
+        <h2 class="font-serif text-3xl md:text-4xl font-bold text-black mb-2 text-center">Auction Draft Values</h2>
+        <p class="text-sm font-bold uppercase tracking-wider mb-4 text-center" style="color:#6b7280;">Auction Draft Format</p>
+        <p class="text-base mb-8 text-center" style="color:#000;">Value-over-replacement auction dollar values for a $200-budget draft. Players are priced by how much better they perform than the freely available replacement at their position.</p>
+
+        <div id="auction-settings-bar" class="flex flex-wrap gap-3 mb-8">
+          <!-- Budget summary pills injected by JS -->
+        </div>
+
+        <!-- Budget allocation chart -->
+        <div id="auction-budget-chart-wrap" class="bg-white border border-slate-200 rounded-lg p-4 mb-8 shadow-sm">
+          <h4 class="font-serif text-base font-bold mb-4" style="color:#000 !important;">Recommended Budget Allocation (per team)</h4>
+          <div class="chart-wrap" style="height: 120px;">
+            <canvas id="chart-auction-budget"></canvas>
+          </div>
+        </div>
+
+        <!-- Position tabs -->
+        <div class="flex flex-wrap justify-center gap-2 mb-8">
+          <button class="auction-tab px-4 py-2 text-sm font-bold rounded-lg border-2 border-slate-200 bg-white transition-colors" style="color:#000;" data-auction-pos="ALL">ALL</button>
+          <button class="auction-tab px-4 py-2 text-sm font-bold rounded-lg border-2 border-slate-200 bg-white transition-colors" style="color:#000;" data-auction-pos="QB">QB</button>
+          <button class="auction-tab px-4 py-2 text-sm font-bold rounded-lg border-2 border-slate-200 bg-white transition-colors" style="color:#000;" data-auction-pos="RB">RB</button>
+          <button class="auction-tab px-4 py-2 text-sm font-bold rounded-lg border-2 border-slate-200 bg-white transition-colors" style="color:#000;" data-auction-pos="WR">WR</button>
+          <button class="auction-tab px-4 py-2 text-sm font-bold rounded-lg border-2 border-slate-200 bg-white transition-colors" style="color:#000;" data-auction-pos="TE">TE</button>
+          <button class="auction-tab px-4 py-2 text-sm font-bold rounded-lg border-2 border-slate-200 bg-white transition-colors" style="color:#000;" data-auction-pos="K">K</button>
+          <button class="auction-tab px-4 py-2 text-sm font-bold rounded-lg border-2 border-slate-200 bg-white transition-colors" style="color:#000;" data-auction-pos="DEF">DEF</button>
+        </div>
+
+        <div id="auction-ALL" class="auction-content hidden"></div>
+        <div id="auction-QB" class="auction-content hidden"></div>
+        <div id="auction-RB" class="auction-content hidden"></div>
+        <div id="auction-WR" class="auction-content hidden"></div>
+        <div id="auction-TE" class="auction-content hidden"></div>
+        <div id="auction-K" class="auction-content hidden"></div>
+        <div id="auction-DEF" class="auction-content hidden"></div>
+        <div id="auction-fallback" class="hidden text-center py-8">
+          <p class="text-sm" style="color:#000;">Auction value data not available. Run the full pipeline to generate.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 5: MOCK DRAFT SIMULATOR
+         ============================================================ -->
+    <section id="mock-draft" class="py-16 md:py-24 border-b border-slate-100">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <span class="block text-center text-accent text-xs font-bold tracking-wider uppercase mb-4">SECTION 05</span>
+        <h2 class="font-serif text-3xl md:text-4xl font-bold text-black mb-2 text-center">Mock Draft Simulator</h2>
+        <p class="text-sm font-bold uppercase tracking-wider mb-4 text-center" style="color:#6b7280;">6-Team Snake Draft</p>
+        <p class="text-base mb-8 text-center" style="color:#000;">Practice draft strategies against 5 AI opponents. Select your draft position, then pick players in real time with a snake draft format. AI teams draft based on ADP rank, positional need, and roster balance.</p>
+
+        <!-- Phase 1: Setup -->
+        <div id="mock-draft-setup" class="flex justify-center">
+          <div class="bg-white border border-slate-200 rounded-lg p-6 shadow-sm max-w-md w-full text-center">
+            <h3 class="font-serif text-lg font-bold mb-4">Select Your Draft Position</h3>
+            <div class="flex flex-wrap justify-center gap-2 mb-6" id="draft-position-grid">
+              <!-- position buttons injected by JS -->
+            </div>
+            <div id="draft-pick-preview" class="text-sm mb-6" style="color:#64748b;">
+              Choose a position from 1 to 6 to see your pick order.
+            </div>
+            <button id="start-draft-btn" class="px-6 py-2.5 bg-accent text-white font-bold text-sm rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed" disabled>Start Draft</button>
+          </div>
+        </div>
+
+        <!-- Phase 2: Drafting -->
+        <div id="mock-draft-active" class="hidden">
+          <!-- Status bar -->
+          <div class="flex flex-wrap items-center gap-2 sm:gap-4 mb-4">
+            <div class="flex items-center gap-1.5">
+              <span class="text-xs sm:text-sm font-bold" style="color:#64748b;">Round</span>
+              <span id="draft-round-num" class="text-base sm:text-lg font-bold">1</span>
+              <span class="text-xs sm:text-sm" style="color:#64748b;">/ 15</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-xs sm:text-sm font-bold" style="color:#64748b;">Pick</span>
+              <span id="draft-pick-num" class="text-base sm:text-lg font-bold">1</span>
+              <span class="text-xs sm:text-sm" style="color:#64748b;">/ 90</span>
+            </div>
+            <div id="draft-on-clock" class="flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-full bg-accent/10 border border-accent/20">
+              <span class="w-2 h-2 rounded-full bg-accent live-pulse"></span>
+              <span class="text-xs sm:text-sm font-bold text-accent">On the clock: --</span>
+            </div>
+            <div class="flex gap-1 sm:ml-auto">
+              <button class="speed-btn active" data-speed="600">Normal</button>
+              <button class="speed-btn" data-speed="200">Fast</button>
+              <button class="speed-btn" data-speed="50">Instant</button>
+            </div>
+          </div>
+
+          <!-- ROW 1: Draft Board (full width) -->
+          <div class="overflow-x-auto mb-4">
+            <div id="mock-board-grid" class="draft-board-grid"></div>
+          </div>
+
+          <!-- ROW 2: Your Roster (left) + Your Pick (right) -->
+          <div class="flex flex-col lg:flex-row gap-4 mb-4">
+            <!-- LEFT: Your Roster -->
+            <div class="lg:w-1/3">
+              <div class="bg-white border border-slate-200 rounded-lg shadow-sm h-full">
+                <div class="px-3 py-2 border-b border-slate-100">
+                  <h4 class="font-bold text-xs uppercase tracking-wider" style="color:#64748b;">Your Roster</h4>
+                </div>
+                <div id="my-roster-slots"></div>
+              </div>
+            </div>
+
+            <!-- RIGHT: Your Pick / AI waiting -->
+            <div class="lg:w-2/3">
+              <div id="user-pick-panel" class="hidden bg-white border-2 border-accent rounded-lg shadow-sm p-4 h-full">
+                <div class="flex flex-wrap items-center gap-2 mb-3">
+                  <h4 class="font-serif font-bold text-sm">Your Pick</h4>
+                  <div class="flex flex-wrap gap-1">
+                    <button class="draft-pos-btn px-2 py-0.5 text-xs font-bold border border-slate-200 rounded-md active" data-filter="ALL">ALL</button>
+                    <button class="draft-pos-btn px-2 py-0.5 text-xs font-bold border border-slate-200 rounded-md" data-filter="QB">QB</button>
+                    <button class="draft-pos-btn px-2 py-0.5 text-xs font-bold border border-slate-200 rounded-md" data-filter="RB">RB</button>
+                    <button class="draft-pos-btn px-2 py-0.5 text-xs font-bold border border-slate-200 rounded-md" data-filter="WR">WR</button>
+                    <button class="draft-pos-btn px-2 py-0.5 text-xs font-bold border border-slate-200 rounded-md" data-filter="TE">TE</button>
+                    <button class="draft-pos-btn px-2 py-0.5 text-xs font-bold border border-slate-200 rounded-md" data-filter="K">K</button>
+                    <button class="draft-pos-btn px-2 py-0.5 text-xs font-bold border border-slate-200 rounded-md" data-filter="DEF">DEF</button>
+                  </div>
+                </div>
+                <input id="draft-search" type="text" placeholder="Search player..." class="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-md mb-3" style="color:#0f172a;">
+                <div id="draft-suggestions" class="flex flex-wrap gap-2 mb-3"></div>
+                <div class="overflow-y-auto" style="max-height:340px;">
+                  <table class="w-full text-left text-sm">
+                    <thead>
+                      <tr class="text-xs uppercase tracking-wider border-b border-slate-200" style="color:#64748b;">
+                        <th class="py-1.5 px-2 cursor-pointer hover:text-black select-none" data-sort="adp_rank">Rank <span class="sort-arrow"></span></th>
+                        <th class="py-1.5 px-2 cursor-pointer hover:text-black select-none" data-sort="player_name">Player <span class="sort-arrow"></span></th>
+                        <th class="py-1.5 px-2 cursor-pointer hover:text-black select-none" data-sort="position">Pos <span class="sort-arrow"></span></th>
+                        <th class="py-1.5 px-2 cursor-pointer hover:text-black select-none" data-sort="team">Team <span class="sort-arrow"></span></th>
+                        <th class="py-1.5 px-2 cursor-pointer hover:text-black select-none" data-sort="fppg">FPPG <span class="sort-arrow"></span></th>
+                        <th class="py-1.5 px-2"></th>
+                      </tr>
+                    </thead>
+                    <tbody id="available-players-body"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div id="ai-picking-msg" class="bg-surface border border-slate-200 rounded-lg p-4 text-center">
+                <div class="w-5 h-5 border-2 border-accent/30 border-t-accent rounded-full animate-spin mx-auto mb-2"></div>
+                <p class="text-xs font-medium" style="color:#64748b;">AI teams are picking...</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- ROW 3: Draft Log (full width) -->
+          <div class="bg-white border border-slate-200 rounded-lg shadow-sm" style="max-height:320px;">
+            <div class="px-3 py-2 border-b border-slate-100">
+              <h4 class="font-bold text-xs uppercase tracking-wider" style="color:#64748b;">Draft Log</h4>
+            </div>
+            <div id="draft-log" class="overflow-y-auto" style="max-height:280px;"></div>
+          </div>
+        </div>
+
+        <!-- Phase 3: Results -->
+        <div id="mock-draft-results" class="hidden">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
+              <p class="text-xs font-bold uppercase tracking-wider mb-1" style="color:#64748b;">Projected Weekly Score</p>
+              <p id="result-weekly-score" class="text-3xl font-bold font-serif text-accent">--</p>
+              <p class="text-xs mt-1" style="color:#64748b;">Starter total (half PPR)</p>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
+              <p class="text-xs font-bold uppercase tracking-wider mb-1" style="color:#64748b;">League Rank</p>
+              <p id="result-league-rank" class="text-3xl font-bold font-serif">--</p>
+              <p class="text-xs mt-1" style="color:#64748b;">Out of 6 teams</p>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
+              <p class="text-xs font-bold uppercase tracking-wider mb-1" style="color:#64748b;">Draft Grade</p>
+              <p id="result-draft-grade" class="text-3xl font-bold font-serif">--</p>
+              <p class="text-xs mt-1" style="color:#64748b;">Based on roster strength</p>
+            </div>
+          </div>
+
+          <!-- Final roster -->
+          <div class="bg-white border border-slate-200 rounded-lg shadow-sm mb-6">
+            <div class="px-4 py-3 border-b border-slate-100">
+              <h3 class="font-serif font-bold text-base">Your Final Roster</h3>
+            </div>
+            <div id="result-roster" class="p-4">
+              <!-- Roster table injected by JS -->
+            </div>
+          </div>
+
+          <!-- League standings -->
+          <div class="bg-white border border-slate-200 rounded-lg shadow-sm mb-6">
+            <div class="px-4 py-3 border-b border-slate-100">
+              <h3 class="font-serif font-bold text-base">League Standings (Projected)</h3>
+            </div>
+            <div id="result-standings" class="p-4">
+              <!-- Standings table injected by JS -->
+            </div>
+          </div>
+
+          <button id="draft-again-btn" class="px-6 py-2.5 bg-accent text-white font-bold text-sm rounded-lg hover:bg-accent/90 transition-colors">Draft Again</button>
+        </div>
+
+        <!-- Fallback when no draft pool data -->
+        <div id="mock-draft-fallback" class="hidden text-center py-8">
+          <p class="text-sm" style="color:#000;">Draft pool data not available. Run the full pipeline to generate.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 6: THE TAKEAWAY
+         ============================================================ -->
+    <section id="takeaway" class="py-16 md:py-24 border-b border-slate-100">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <span class="block text-center text-accent text-xs font-bold tracking-wider uppercase mb-4">SECTION 06</span>
+        <h2 class="font-serif text-3xl md:text-4xl font-bold text-black mb-10 text-center">The Takeaway</h2>
+
+        <!-- Narrative -->
+        <div class="max-w-3xl mb-12">
+          <p id="takeaway-narrative" class="text-black leading-relaxed text-lg mb-8"></p>
+          <div id="takeaway-insights" class="space-y-4 mb-12">
+            <!-- Insight bullets injected by JS -->
+          </div>
+        </div>
+
+        <!-- What I Would Build Next -->
+        <div class="mb-12">
+          <h3 class="font-serif text-xl font-bold mb-6">What I Would Build Next</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-white shadow-sm border border-slate-200 rounded-lg p-5">
+              <div class="w-8 h-8 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center mb-3">
+                <svg class="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+              </div>
+              <h4 class="font-bold text-sm mb-1">Trade Value Calculator</h4>
+              <p class="text-black text-xs leading-relaxed">Mid-season trade value model based on remaining schedule strength, recent performance trends, and positional scarcity.</p>
+            </div>
+            <div class="bg-white shadow-sm border border-slate-200 rounded-lg p-5">
+              <div class="w-8 h-8 rounded-lg bg-warn/10 border border-warn/20 flex items-center justify-center mb-3">
+                <svg class="w-4 h-4 text-warn" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              </div>
+              <h4 class="font-bold text-sm mb-1">Injury Risk Model</h4>
+              <p class="text-black text-xs leading-relaxed">Historical injury data combined with workload metrics to flag players with elevated risk before draft day.</p>
+            </div>
+            <div class="bg-white shadow-sm border border-slate-200 rounded-lg p-5">
+              <div class="w-8 h-8 rounded-lg bg-gold/10 border border-gold/20 flex items-center justify-center mb-3">
+                <svg class="w-4 h-4 text-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+              </div>
+              <h4 class="font-bold text-sm mb-1">Schedule Strength Analyzer</h4>
+              <p class="text-black text-xs leading-relaxed">Remaining-schedule difficulty model that scores each team's upcoming matchups by defensive rankings, helping target players with soft playoff schedules.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tools Used -->
+        <div class="mb-12">
+          <h3 class="font-serif text-xl font-bold mb-6">Tools Used</h3>
+          <div id="tools-grid" class="flex flex-wrap gap-3">
+            <!-- Injected by JS -->
+          </div>
+        </div>
+
+        <!-- Source Attribution -->
+        <div class="bg-surface border border-slate-200 rounded-lg p-5">
+          <p class="text-black text-sm leading-relaxed">
+            Data sourced from <span class="text-black">nflverse</span> via the <span class="text-black">nfl_data_py</span> Python library.
+            <span id="adp-attribution" class="hidden">ADP estimates sourced from the <span class="text-black">Sleeper API</span>.</span>
+            All player statistics reflect official NFL game logs. Fantasy scoring calculated using standard, half-PPR, and full-PPR formats.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         FOOTER
+         ============================================================ -->
+    <footer class="py-10 border-t border-slate-100">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-black">
+          <p>Built with Python, Pandas, Chart.js</p>
+          <p id="footer-date">Data as of --</p>
+          <a href="docs/pipeline.md" class="text-accent hover:text-accent/80 transition-colors">View Pipeline Documentation</a>
+        </div>
+      </div>
+    </footer>
+
+  </main>
+
+  <!-- ============================================================
+       JAVASCRIPT
+       ============================================================ -->
+  <script>
+    // -- Chart.js defaults --
+    Chart.defaults.color = '#0f172a';
+    Chart.defaults.borderColor = 'rgba(0,0,0,0.08)';
+    Chart.defaults.font.family = "'DM Sans', sans-serif";
+    Chart.defaults.font.size = 12;
+    Chart.defaults.plugins.legend.labels.boxWidth = 12;
+    Chart.defaults.plugins.legend.labels.padding = 16;
+    Chart.defaults.plugins.legend.labels.color = '#0f172a';
+
+    // -- State --
+    let DATA = null;
+    let chartInstances = {};
+    let showingAllRows = false;
+
+    // -- Position colors map (fallback) --
+    const DEFAULT_POS_COLORS = {
+      QB: '#e76f51', RB: '#52b788', WR: '#4895ef',
+      TE: '#d4a843', K: '#9b5de5', DEF: '#6b7280'
+    };
+
+    // -- Utility functions --
+    function posColor(pos) {
+      if (DATA && DATA.position_colors && DATA.position_colors[pos]) {
+        return DATA.position_colors[pos];
+      }
+      return DEFAULT_POS_COLORS[pos] || '#6b7280';
+    }
+
+    function fmt(n, decimals) {
+      if (n == null) return '--';
+      if (decimals !== undefined) return Number(n).toFixed(decimals);
+      return Number(n).toLocaleString();
+    }
+
+    function safeGet(obj, path, fallback) {
+      // Safely traverse nested keys
+      const keys = path.split('.');
+      let current = obj;
+      for (const key of keys) {
+        if (current == null || typeof current !== 'object') return fallback;
+        current = current[key];
+      }
+      return current != null ? current : fallback;
+    }
+
+    function playerImg(sleeperId, size, pos, team) {
+      size = size || 40;
+      // DEF uses team logo from Sleeper CDN instead of player headshot
+      if (pos === 'DEF' && (team || sleeperId)) {
+        var abbr = (team || sleeperId).toLowerCase();
+        return '<img src="https://sleepercdn.com/images/team_logos/nfl/' + abbr + '.png" ' +
+          'alt="" class="rounded-full object-cover border border-slate-200 bg-white" ' +
+          'style="width:' + size + 'px;height:' + size + 'px;padding:2px;" ' +
+          'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\';">' +
+          '<span class="rounded-full bg-slate-100 items-center justify-center text-xs font-bold text-black" ' +
+          'style="width:' + size + 'px;height:' + size + 'px;display:none;">DEF</span>';
+      }
+      if (sleeperId) {
+        return '<img src="https://sleepercdn.com/content/nfl/players/thumb/' + sleeperId + '.jpg" ' +
+          'alt="" class="rounded-full object-cover border border-slate-200" ' +
+          'style="width:' + size + 'px;height:' + size + 'px;" ' +
+          'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\';">' +
+          '<span class="rounded-full bg-slate-100 items-center justify-center text-xs font-bold text-black" ' +
+          'style="width:' + size + 'px;height:' + size + 'px;display:none;">' + (pos || '') + '</span>';
+      }
+      return '<span class="rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-black" ' +
+        'style="width:' + size + 'px;height:' + size + 'px;">' + (pos || '?') + '</span>';
+    }
+
+    function createPosBadge(pos) {
+      const span = document.createElement('span');
+      span.className = 'pos-badge';
+      span.style.background = posColor(pos);
+      span.textContent = pos;
+      return span;
+    }
+
+    function valueRatingClass(rating) {
+      if (!rating) return '';
+      const r = rating.toLowerCase();
+      if (r === 'steal') return 'value-steal';
+      if (r === 'reach') return 'value-reach';
+      return 'value-fair';
+    }
+
+    // -- Mobile menu toggle --
+    document.getElementById('mobile-menu-btn').addEventListener('click', function() {
+      const menu = document.getElementById('mobile-menu');
+      menu.classList.toggle('hidden');
+    });
+
+    // -- Close mobile menu on link click --
+    document.querySelectorAll('#mobile-menu a').forEach(function(link) {
+      link.addEventListener('click', function() {
+        document.getElementById('mobile-menu').classList.add('hidden');
+      });
+    });
+
+    // -- Data loading --
+    fetch('data/dashboard_data.json')
+      .then(function(res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function(data) {
+        DATA = data;
+        document.getElementById('loading-screen').classList.add('hidden');
+        document.getElementById('main-content').classList.remove('hidden');
+        renderDashboard();
+      })
+      .catch(function(err) {
+        console.error('Failed to load data:', err);
+        document.getElementById('loading-screen').classList.add('hidden');
+        document.getElementById('error-screen').classList.remove('hidden');
+      });
+
+    // -- Main render function --
+    function renderDashboard() {
+      var d = DATA;
+      var status = d.data_status || {};
+      var isLive = !status.is_complete;
+
+      // Live badge
+      if (isLive) {
+        document.getElementById('live-badge').classList.remove('hidden');
+      }
+
+      renderHero(d, status, isLive);
+      renderRawData(d, status);
+      renderPipeline(d, status);
+      renderDraftBoard(d, status);
+      renderMockDraft(d);
+      renderTakeaway(d, status, isLive);
+      renderFooter(d, status);
+      setupTabs();
+      setupShowMore();
+      setupIntersectionObserver();
+
+      // Short delay so DOM is painted before chart creation
+      requestAnimationFrame(function() {
+        renderCharts(d);
+      });
+    }
+
+    // -- Section 1: The Brief --
+    function renderHero(d, status, isLive) {
+      var season = status.season || '20XX';
+      var teams = safeGet(d, 'draft_format.teams', 12);
+      var type = safeGet(d, 'draft_format.type', 'snake');
+      var totalPlayers = safeGet(d, 'kpi.total_players_analyzed', '--');
+      var posCount = safeGet(d, 'kpi.positions_covered', 4);
+
+      document.getElementById('hero-subtitle').textContent =
+        'Season ' + season + ' -- Data-driven draft recommendations for ' + teams + '-team ' + type + ' draft leagues';
+
+      document.getElementById('hero-scope').textContent =
+        'A quantitative analysis of ' + fmt(totalPlayers) + ' NFL players across ' + posCount +
+        ' skill positions, scoring each on consistency, upside, and overall recommendation strength. ' +
+        'Built to answer one question: who should you draft, and when?';
+
+      if (isLive) {
+        document.getElementById('hero-live-note').classList.remove('hidden');
+        document.getElementById('hero-live-text').textContent =
+          'Data as of Week ' + status.weeks_available + '/' + status.weeks_expected;
+      }
+
+      // Tech pills
+      var pills = ['Python', 'nfl_data_py', 'Pandas', 'Chart.js', 'Tailwind CSS'];
+      var hasAdp = d.adp_comparison && (d.adp_comparison.steals || d.adp_comparison.reaches);
+      if (hasAdp) pills.push('Sleeper API');
+
+      var container = document.getElementById('hero-pills');
+      pills.forEach(function(name) {
+        var span = document.createElement('span');
+        span.className = 'inline-block px-3 py-1 rounded-full text-xs font-medium bg-surface border border-slate-200 text-black';
+        span.textContent = name;
+        container.appendChild(span);
+      });
+
+      // Right panel: top pick snapshot per position
+      var snapshot = document.getElementById('hero-snapshot');
+      if (!snapshot) return;
+      var recs = d.recommendations || {};
+      var heroPositions = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'];
+      var qualifiedCount = safeGet(d, 'kpi.qualified_players', 0);
+      var weekCount = status.weeks_available || 18;
+      var gamesTracked = safeGet(d, 'kpi.season_games', 0);
+
+      var html = '<div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">';
+
+      // Header stats row
+      html += '<div class="grid grid-cols-3 border-b border-slate-100">' +
+        '<div class="p-4 text-center border-r border-slate-100">' +
+          '<p class="text-2xl font-bold" style="color:#16a34a;">' + fmt(qualifiedCount) + '</p>' +
+          '<p class="text-xs" style="color:#000;">Players</p>' +
+        '</div>' +
+        '<div class="p-4 text-center border-r border-slate-100">' +
+          '<p class="text-2xl font-bold" style="color:#16a34a;">' + weekCount + '</p>' +
+          '<p class="text-xs" style="color:#000;">Weeks</p>' +
+        '</div>' +
+        '<div class="p-4 text-center">' +
+          '<p class="text-2xl font-bold" style="color:#16a34a;">' + fmt(gamesTracked) + '</p>' +
+          '<p class="text-xs" style="color:#000;">Games</p>' +
+        '</div>' +
+      '</div>';
+
+      // Top pick per position
+      html += '<div class="px-4 py-3 border-b border-slate-100">' +
+        '<p class="text-xs font-bold uppercase tracking-wider" style="color:#64748b;">Top Pick By Position</p>' +
+      '</div>';
+
+      heroPositions.forEach(function(pos) {
+        var posData = recs[pos] || {};
+        var top = posData.top_pick;
+        if (!top) return;
+
+        var color = posColor(pos);
+
+        html += '<div class="flex items-center gap-3 px-4 py-3 border-b border-slate-50 hover:bg-slate-50 transition-colors">' +
+          playerImg(top.sleeper_id, 40, pos, top.team) +
+          '<div class="flex-1 min-w-0">' +
+            '<p class="font-bold text-sm truncate" style="color:#000;">' + top.player_name + '</p>' +
+            '<p class="text-xs" style="color:#64748b;">' + (top.team || '') + ' | ' + fmt(top.games) + ' games</p>' +
+          '</div>' +
+          '<span class="pos-badge flex-shrink-0" style="background:' + color + ';width:28px;height:28px;font-size:0.625rem;">' + pos + '</span>' +
+          '<div class="text-right flex-shrink-0 ml-1">' +
+            '<p class="font-bold text-sm" style="color:' + color + ';">' + fmt(top.fppg, 1) + '</p>' +
+            '<p class="text-xs" style="color:#64748b;">fppg</p>' +
+          '</div>' +
+        '</div>';
+      });
+
+      // Footer: scoring format
+      var defaultScoring = d.default_scoring || 'half_ppr';
+      var scoringLabel = (d.scoring_settings && d.scoring_settings[defaultScoring])
+        ? d.scoring_settings[defaultScoring].label : 'Half PPR';
+      html += '<div class="px-4 py-3 bg-slate-50">' +
+        '<p class="text-xs text-center" style="color:#64748b;">Scoring: <span class="font-bold" style="color:#000;">' + scoringLabel + '</span> | ' +
+        teams + '-team ' + capitalize(type) + ' draft</p>' +
+      '</div>';
+
+      html += '</div>';
+      snapshot.innerHTML = html;
+
+      // Key highlights on left side
+      var highlights = document.getElementById('hero-highlights');
+      if (highlights) {
+        var recs = d.recommendations || {};
+        var steals = (d.adp_comparison || {}).steals || [];
+        var scarcity = d.position_scarcity || {};
+
+        // Find the most scarce position
+        var scarcestPos = '';
+        var scarcestRatio = 999;
+        ['RB', 'WR', 'TE', 'QB'].forEach(function(p) {
+          var sc = scarcity[p];
+          if (sc && sc.elite_tier) {
+            var ratio = sc.elite_tier / sc.startable;
+            if (ratio < scarcestRatio) {
+              scarcestRatio = ratio;
+              scarcestPos = p;
+            }
+          }
+        });
+
+        // Find best value pick from ADP steals
+        var bestSteal = steals.length > 0 ? steals[0] : null;
+
+        // Build 3 highlight cards
+        var hHtml = '<div class="grid grid-cols-1 sm:grid-cols-3 gap-4">';
+
+        // Highlight 1: MVP pick
+        var qbTop = (recs.QB || {}).top_pick;
+        if (qbTop) {
+          hHtml += '<div class="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">' +
+            '<div class="flex items-center gap-2 mb-3">' +
+              '<svg class="w-5 h-5 flex-shrink-0" style="color:#e76f51;" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>' +
+              '<p class="text-xs font-bold uppercase tracking-wider" style="color:#64748b;">Season MVP</p>' +
+            '</div>' +
+            '<p class="font-bold text-lg mb-1" style="color:#000;">' + qbTop.player_name + '</p>' +
+            '<p class="text-sm" style="color:#000;">' + fmt(qbTop.fppg, 1) + ' FPPG across ' + fmt(qbTop.games) + ' games</p>' +
+            '<p class="text-xs mt-2" style="color:#64748b;">Highest-scoring QB in all formats</p>' +
+          '</div>';
+        }
+
+        // Highlight 2: Position scarcity alert
+        if (scarcestPos) {
+          var scData = scarcity[scarcestPos];
+          hHtml += '<div class="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">' +
+            '<div class="flex items-center gap-2 mb-3">' +
+              '<svg class="w-5 h-5 flex-shrink-0" style="color:#dc2626;" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>' +
+              '<p class="text-xs font-bold uppercase tracking-wider" style="color:#64748b;">Scarcity Alert</p>' +
+            '</div>' +
+            '<p class="font-bold text-lg mb-1" style="color:#000;">' + scarcestPos + ' is the scarcest</p>' +
+            '<p class="text-sm" style="color:#000;">Only ' + scData.elite_tier + ' elite-tier out of ' + scData.startable + ' startable</p>' +
+            '<p class="text-xs mt-2" style="color:#64748b;">Draft ' + scarcestPos + 's early or risk replacement-level</p>' +
+          '</div>';
+        }
+
+        // Highlight 3: Best value steal
+        if (bestSteal) {
+          hHtml += '<div class="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">' +
+            '<div class="flex items-center gap-2 mb-3">' +
+              '<svg class="w-5 h-5 flex-shrink-0" style="color:#16a34a;" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L11 10.586 14.586 7H12z" clip-rule="evenodd"/></svg>' +
+              '<p class="text-xs font-bold uppercase tracking-wider" style="color:#64748b;">Biggest Steal</p>' +
+            '</div>' +
+            '<p class="font-bold text-lg mb-1" style="color:#000;">' + bestSteal.player_name + '</p>' +
+            '<p class="text-sm" style="color:#000;">ADP Round ' + bestSteal.adp_round + ' but performed like Round ' + bestSteal.stat_round + '</p>' +
+            '<p class="text-xs mt-2" style="color:#64748b;">' + fmt(bestSteal.round_diff) + '-round value gap in ' + season + '</p>' +
+          '</div>';
+        }
+
+        hHtml += '</div>';
+        highlights.innerHTML = hHtml;
+      }
+    }
+
+    // -- Section 2: Raw Data --
+    function renderRawData(d, status) {
+      document.getElementById('kpi-players').textContent = fmt(safeGet(d, 'kpi.total_players_analyzed', '--'));
+      document.getElementById('kpi-sources').textContent = fmt(safeGet(d, 'kpi.data_sources', '--'));
+      document.getElementById('kpi-games').textContent = fmt(safeGet(d, 'kpi.season_games', '--'));
+
+      // Draft format summary
+      var df = d.draft_format || {};
+      document.getElementById('draft-format-summary').textContent =
+        (df.teams || 12) + ' Teams / ' + (df.rounds || 15) + ' Rounds / ' +
+        capitalize(df.type || 'snake') + ' Draft / ' +
+        (df.total_players_drafted || 180) + ' Total Picks';
+
+      // Roster slot badges
+      var slotsContainer = document.getElementById('roster-slots-grid');
+      var slots = df.roster_slots || {};
+      Object.keys(slots).forEach(function(pos) {
+        var slot = slots[pos];
+        var div = document.createElement('div');
+        div.className = 'flex items-center gap-3 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2';
+
+        var badge = createPosBadge(pos);
+        var info = document.createElement('div');
+        info.innerHTML = '<p class="text-black text-sm font-bold">' + pos + ' <span class="text-black font-normal">x' + slot.starters + '</span></p>' +
+          '<p class="text-black text-xs">' + slot.label + '</p>';
+
+        div.appendChild(badge);
+        div.appendChild(info);
+        slotsContainer.appendChild(div);
+      });
+
+      // Terminal -- show actual pipeline row counts
+      var totalPlayers = safeGet(d, 'kpi.total_players_analyzed', 500);
+      var qualifiedPlayers = safeGet(d, 'kpi.qualified_players', totalPlayers);
+      var seasonalRows = safeGet(d, 'kpi.seasonal_rows', totalPlayers);
+      var weeklyRows = safeGet(d, 'kpi.weekly_rows', 0);
+      var weeks = status.weeks_available || 18;
+      var posCount = safeGet(d, 'kpi.positions_covered', 4);
+      var dataSources = safeGet(d, 'kpi.data_sources', 1);
+
+      document.getElementById('terminal-content').innerHTML =
+        '<p><span class="prompt">$</span> python scripts/01_clean.py</p>' +
+        '<p class="output">Loading ' + dataSources + ' data sources...</p>' +
+        '<p class="output">  seasonal_stats: <span class="highlight">' + fmt(seasonalRows) + '</span> player rows</p>' +
+        '<p class="output">  weekly_stats: <span class="highlight">' + fmt(weeklyRows) + '</span> player-week rows (' + weeks + ' weeks)</p>' +
+        '<p class="output">  play_by_play: kicker + defense stats extracted</p>' +
+        '<p class="output">Cleaning complete.</p>' +
+        '<p class="mt-3"><span class="prompt">$</span> python scripts/02_transform.py</p>' +
+        '<p class="output">Qualified players (8+ games): <span class="highlight">' + fmt(qualifiedPlayers) + '</span></p>' +
+        '<p class="output">Fantasy points calculated <span class="highlight">(3 scoring formats)</span></p>' +
+        '<p class="output">Rankings generated for <span class="highlight">' + posCount + '</span> positions (QB, RB, WR, TE, K, DEF, FLEX)</p>' +
+        '<p class="output">Output: data/dashboard_data.json</p>' +
+        '<p class="output">Transform complete.</p>' +
+        '<p class="mt-3"><span class="prompt">$</span> <span class="output" style="animation: blink 1s step-end infinite;">_</span></p>';
+    }
+
+    // -- Section 3: Pipeline --
+    function renderPipeline(d, status) {
+      var hasAdp = d.adp_comparison && (d.adp_comparison.steals || d.adp_comparison.reaches);
+
+      // Style ADP pipeline as dashed if no ADP data
+      var adpNodes = document.querySelectorAll('.pipeline-opt-node');
+      if (!hasAdp) {
+        adpNodes.forEach(function(node) {
+          node.classList.add('is-dashed');
+          node.style.opacity = '0.45';
+          var ring = node.querySelector('.pipeline-icon-ring');
+          if (ring) {
+            ring.style.background = '#f8fafc';
+            ring.style.borderColor = '#cbd5e1';
+            ring.style.borderStyle = 'dashed';
+          }
+        });
+      }
+
+      // Scoring format cards
+      var scoringContainer = document.getElementById('scoring-formats');
+      var scoring = d.scoring_settings || {};
+      var defaultScoring = d.default_scoring || 'half_ppr';
+
+      Object.keys(scoring).forEach(function(key) {
+        var s = scoring[key];
+        var isDefault = key === defaultScoring;
+        var card = document.createElement('div');
+        card.className = 'rounded-lg p-4 border ' +
+          (isDefault
+            ? 'bg-accent/5 border-accent/30'
+            : 'bg-slate-50 border-slate-100');
+
+        var heading = '<div class="flex items-center gap-2 mb-3">' +
+          '<h4 class="font-bold text-sm">' + (s.label || key) + '</h4>' +
+          (isDefault ? '<span class="text-[10px] font-bold uppercase tracking-wider text-accent bg-accent/10 px-1.5 py-0.5 rounded">Default</span>' : '') +
+          '</div>';
+
+        var details = '<div class="space-y-1 text-xs text-black">';
+        Object.keys(s).forEach(function(prop) {
+          if (prop === 'label') return;
+          details += '<div class="flex justify-between"><span>' + capitalize(prop.replace(/_/g, ' ')) + '</span><span class="text-black">' + s[prop] + '</span></div>';
+        });
+        details += '</div>';
+
+        card.innerHTML = heading + details;
+        scoringContainer.appendChild(card);
+      });
+    }
+
+    // -- Section 4: Draft Board --
+    function renderDraftBoard(d, status) {
+      renderPositionKPIs(d);
+      renderOverallTable(d);
+      renderPositionPanels(d);
+      renderSleepers(d);
+      renderAuctionValues(d);
+      renderStrategyGuide(d);
+    }
+
+    function renderPositionKPIs(d) {
+      var container = document.getElementById('position-kpi-row');
+      var recs = d.recommendations || {};
+      var positions = ['QB', 'RB', 'WR', 'TE'];
+
+      positions.forEach(function(pos) {
+        var topPick = safeGet(recs, pos + '.top_pick', null);
+        var card = document.createElement('div');
+        card.className = 'bg-white shadow-sm border border-slate-200 rounded-lg p-5';
+
+        var color = posColor(pos);
+        var fppg = topPick ? fmt(topPick.fppg, 1) : '--';
+        var name = topPick ? topPick.player_name : '--';
+
+        card.innerHTML =
+          '<div class="flex items-center gap-2 mb-2">' +
+            '<span class="pos-badge" style="background:' + color + ';width:24px;height:24px;font-size:0.625rem;">' + pos + '</span>' +
+            '<span class="text-black text-xs">Top ' + pos + ' FPPG</span>' +
+          '</div>' +
+          '<p class="text-2xl font-bold text-black">' + fppg + '</p>' +
+          '<p class="text-black text-xs mt-1 truncate">' + name + '</p>';
+
+        container.appendChild(card);
+      });
+    }
+
+    function renderOverallTable(d) {
+      var tbody = document.getElementById('overall-rankings-body');
+      var players = d.top_overall || [];
+
+      players.forEach(function(p, i) {
+        var tr = document.createElement('tr');
+        tr.className = 'data-row border-b border-slate-100 transition-colors' + (i >= 10 ? ' hidden extra-row' : '');
+
+        tr.innerHTML =
+          '<td class="px-5 py-4 text-sm font-bold" style="color:#000;">' + p.rank + '</td>' +
+          '<td class="px-5 py-4 font-medium"><div class="flex items-center gap-3">' + playerImg(p.sleeper_id, 40, p.position, p.team) + '<span style="color:#000;font-size:1rem;">' + p.player_name + '</span></div></td>' +
+          '<td class="px-5 py-4"><span class="pos-badge" style="background:' + posColor(p.position) + ';width:28px;height:28px;font-size:0.625rem;">' + p.position + '</span></td>' +
+          '<td class="px-5 py-4 hidden sm:table-cell" style="color:#000;">' + (p.team || '--') + '</td>' +
+          '<td class="px-5 py-4 text-right font-bold" style="color:#000;font-size:1rem;">' + fmt(p.fppg, 1) + '</td>' +
+          '<td class="px-5 py-4 text-right hidden md:table-cell">' +
+            '<div class="flex items-center justify-end gap-2">' +
+              '<div class="score-bar w-24"><div class="score-bar-fill" style="width:' + (p.recommendation_score || 0) + '%;background:' + posColor(p.position) + ';"></div></div>' +
+              '<span class="text-sm w-8 text-right" style="color:#000;">' + fmt(p.recommendation_score, 1) + '</span>' +
+            '</div>' +
+          '</td>';
+
+        tbody.appendChild(tr);
+      });
+
+      // Hide show more button if 10 or fewer
+      if (players.length <= 10) {
+        document.getElementById('show-more-container').classList.add('hidden');
+      }
+    }
+
+    function renderPositionPanels(d) {
+      var recs = d.recommendations || {};
+      var statPositions = ['QB', 'RB', 'WR', 'TE'];
+
+      // Full stat-based panels for QB/RB/WR/TE
+      statPositions.forEach(function(pos) {
+        var panel = document.getElementById('tab-' + pos);
+        var rec = recs[pos];
+        if (!rec) {
+          panel.innerHTML = '<p class="text-black text-sm">No data available for ' + pos + '.</p>';
+          return;
+        }
+
+        var html = '';
+        var top = rec.top_pick;
+        if (top) {
+          html += renderTopPickCard(top, pos);
+        }
+
+        var picks = rec.best_picks || [];
+        if (picks.length > 0) {
+          html += '<h3 class="font-serif text-xl font-bold mb-5 mt-10">Best ' + pos + ' Picks</h3>';
+          html += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">';
+          picks.forEach(function(p) {
+            html += renderBestPickCard(p, pos);
+          });
+          html += '</div>';
+        }
+
+        panel.innerHTML = html;
+      });
+
+      // FLEX panel -- uses full stat cards since these are RB/WR/TE players
+      var flexPanel = document.getElementById('tab-FLEX');
+      var flexRec = recs['FLEX'];
+      if (flexRec && flexRec.top_pick) {
+        var flexHtml = '<div class="mb-4 px-1"><p class="text-black text-sm">Best available RB/WR/TE for your FLEX roster slot, ranked by overall recommendation score.</p></div>';
+        flexHtml += renderTopPickCard(flexRec.top_pick, flexRec.top_pick.position);
+        var flexPicks = flexRec.best_picks || [];
+        if (flexPicks.length > 0) {
+          flexHtml += '<h3 class="font-serif text-lg font-bold mb-4 mt-8">Best FLEX Options</h3>';
+          flexHtml += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 mb-10">';
+          flexPicks.forEach(function(p) {
+            flexHtml += renderBestPickCard(p, p.position);
+          });
+          flexHtml += '</div>';
+        }
+        flexPanel.innerHTML = flexHtml;
+      } else {
+        flexPanel.innerHTML = '<p class="text-black text-sm">No FLEX data available.</p>';
+      }
+
+      // K and DEF panels -- full stat cards from PBP data
+      ['K', 'DEF'].forEach(function(pos) {
+        var panel = document.getElementById('tab-' + pos);
+        var rec = recs[pos];
+        if (!rec || !rec.top_pick) {
+          panel.innerHTML = '<p class="text-black text-sm">No ' + pos + ' data available. Run the full pipeline to load stats.</p>';
+          return;
+        }
+
+        var label = pos === 'K' ? 'Kicker' : 'Defense';
+        var note = pos === 'K'
+          ? 'Kickers are a streaming position -- don\'t invest premium draft capital. Wait until the last rounds.'
+          : 'Team defenses are matchup-dependent. Stream weekly or grab a top unit in the final rounds.';
+
+        var top = rec.top_pick;
+        var color = posColor(pos);
+
+        // Build stat boxes for top pick
+        var statsHtml = '';
+        if (pos === 'K') {
+          statsHtml = kStatBoxes(top);
+        } else {
+          statsHtml = defStatBoxes(top);
+        }
+
+        var html = '<div class="mb-6 px-1"><p class="text-black text-sm">' + note + '</p></div>';
+
+        // Top pick card with stats
+        html += '<div class="bg-white shadow-sm border border-slate-200 rounded-lg p-8 mb-8">' +
+          '<div class="flex items-center gap-2 mb-2">' +
+            '<span class="text-sm font-bold uppercase tracking-wider text-black">Top ' + label + '</span>' +
+          '</div>' +
+          '<div class="flex items-center gap-4 mb-6">' +
+            playerImg(top.sleeper_id, 80, pos, top.team) +
+            '<span class="pos-badge" style="background:' + color + ';width:36px;height:36px;font-size:0.75rem;">' + pos + '</span>' +
+            '<div>' +
+              '<h3 class="font-serif text-3xl font-bold" style="color:#000;">' + top.player_name + '</h3>' +
+              '<p style="color:#000;font-size:1rem;">' + (top.team || '') + ' -- ' + fmt(top.fantasy_points) + ' pts (' + fmt(top.fppg, 1) + ' FPPG)</p>' +
+            '</div>' +
+          '</div>' +
+          '<div class="grid grid-cols-2 sm:grid-cols-4 gap-4">' + statsHtml + '</div>' +
+        '</div>';
+
+        // Best picks grid with stats
+        var picks = rec.best_picks || [];
+        if (picks.length > 0) {
+          html += '<h3 class="font-serif text-xl font-bold mb-5">Best ' + label + ' Picks</h3>';
+          html += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">';
+          picks.forEach(function(p) {
+            var keyStat = pos === 'K'
+              ? fmt(p.fg_made) + '/' + fmt(p.fg_att) + ' FG / ' + fmt(p.pat_made) + ' PAT'
+              : fmt(p.sacks) + ' sacks / ' + fmt(p.interceptions) + ' INT';
+
+            html += '<div class="bg-slate-50 border border-slate-100 rounded-lg p-5 relative" style="border-left:4px solid ' + color + '">' +
+              '<div class="flex items-start justify-between mb-3">' +
+                '<span class="text-sm font-bold" style="color:#000;">#' + (p.rank || '--') + '</span>' +
+                '<span class="text-sm font-bold" style="color:#000;">' + fmt(p.fppg, 1) + ' <span class="font-normal">fppg</span></span>' +
+              '</div>' +
+              '<div class="flex items-center gap-3 mb-2">' + playerImg(p.sleeper_id, 48, pos, p.team) +
+              '<div><p class="font-bold truncate mb-0.5" style="color:#000;font-size:1rem;">' + p.player_name + '</p>' +
+              '<p class="text-sm" style="color:#000;">' + (p.team || '--') + '</p></div></div>' +
+              '<p class="text-sm mb-3" style="color:#000;">' + keyStat + '</p>' +
+              '<div class="score-bar" style="height:6px;"><div class="score-bar-fill" style="width:' + Math.min(100, (p.fppg / (pos === 'K' ? 12 : 10)) * 100) + '%;background:' + color + '"></div></div>' +
+            '</div>';
+          });
+          html += '</div>';
+        }
+
+        panel.innerHTML = html;
+      });
+    }
+
+    function kStatBoxes(p) {
+      var stats = [
+        { label: 'FG Made', value: fmt(p.fg_made) + '/' + fmt(p.fg_att) },
+        { label: 'FG %', value: fmt(p.fg_pct, 1) + '%' },
+        { label: 'PAT Made', value: fmt(p.pat_made) },
+        { label: 'FPPG', value: fmt(p.fppg, 1) }
+      ];
+      return stats.map(function(s) {
+        return '<div class="bg-slate-50 border border-slate-100 rounded-lg px-4 py-3">' +
+          '<p class="text-black text-sm mb-1">' + s.label + '</p>' +
+          '<p class="text-black font-bold text-lg">' + s.value + '</p>' +
+        '</div>';
+      }).join('');
+    }
+
+    function defStatBoxes(p) {
+      var stats = [
+        { label: 'Sacks', value: fmt(p.sacks) },
+        { label: 'INTs', value: fmt(p.interceptions) },
+        { label: 'PPG Allowed', value: fmt(p.ppg_allowed, 1) },
+        { label: 'FPPG', value: fmt(p.fppg, 1) }
+      ];
+      return stats.map(function(s) {
+        return '<div class="bg-slate-50 border border-slate-100 rounded-lg px-4 py-3">' +
+          '<p class="text-black text-sm mb-1">' + s.label + '</p>' +
+          '<p class="text-black font-bold text-lg">' + s.value + '</p>' +
+        '</div>';
+      }).join('');
+    }
+
+    function renderTopPickCard(p, pos) {
+      var color = posColor(pos);
+      var statsHtml = positionStats(p, pos);
+
+      // Circular progress for recommendation score
+      var score = p.recommendation_score || 0;
+      var circumference = 2 * Math.PI * 42;
+      var offset = circumference - (score / 100) * circumference;
+
+      var adpHtml = '';
+      if (p.adp_round != null) {
+        var ratingClass = valueRatingClass(p.value_rating);
+        adpHtml = '<div class="flex items-center gap-2 mt-4">' +
+          '<span class="text-black text-sm">ADP Round ' + p.adp_round + '</span>' +
+          (p.value_rating ? '<span class="text-xs font-bold px-2 py-0.5 rounded ' + ratingClass + '">' + capitalize(p.value_rating) + '</span>' : '') +
+          '</div>';
+      }
+
+      return '<div class="bg-white shadow-sm border border-slate-200 rounded-lg p-8 mb-8">' +
+        '<div class="flex items-center gap-2 mb-2">' +
+          '<span class="text-sm font-bold uppercase tracking-wider" style="color:#000;">Top Pick</span>' +
+        '</div>' +
+        '<div class="flex flex-col md:flex-row gap-8">' +
+          '<div class="flex-1">' +
+            '<div class="flex items-center gap-4 mb-6">' +
+              playerImg(p.sleeper_id, 80, pos, p.team) +
+              '<span class="pos-badge" style="background:' + color + ';width:36px;height:36px;font-size:0.75rem;">' + pos + '</span>' +
+              '<div>' +
+                '<h3 class="font-serif text-3xl font-bold" style="color:#000;">' + p.player_name + '</h3>' +
+                '<p style="color:#000;font-size:1rem;">' + (p.team || '') + ' -- #' + p.rank + ' Overall</p>' +
+              '</div>' +
+            '</div>' +
+            '<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">' + statsHtml + '</div>' +
+            adpHtml +
+          '</div>' +
+          '<div class="flex flex-col items-center gap-4">' +
+            '<div class="circular-progress">' +
+              '<svg width="100" height="100" viewBox="0 0 100 100">' +
+                '<circle cx="50" cy="50" r="42" fill="none" stroke="rgba(0,0,0,0.08)" stroke-width="7"/>' +
+                '<circle cx="50" cy="50" r="42" fill="none" stroke="' + color + '" stroke-width="7" ' +
+                  'stroke-linecap="round" stroke-dasharray="' + circumference + '" stroke-dashoffset="' + offset + '" class="progress-ring"/>' +
+              '</svg>' +
+              '<div class="value text-black text-lg">' + fmt(score, 1) + '</div>' +
+            '</div>' +
+            '<span class="text-black text-sm">Recommendation</span>' +
+            '<div class="w-full space-y-3">' +
+              '<div>' +
+                '<div class="flex justify-between text-sm mb-1"><span class="text-black">Consistency</span><span class="text-black font-bold">' + fmt(p.consistency_score, 0) + '</span></div>' +
+                '<div class="score-bar" style="height:6px;"><div class="score-bar-fill" style="width:' + (p.consistency_score || 0) + '%;background:' + color + '"></div></div>' +
+              '</div>' +
+              '<div>' +
+                '<div class="flex justify-between text-sm mb-1"><span class="text-black">Upside</span><span class="text-black font-bold">' + fmt(p.upside_score, 0) + '</span></div>' +
+                '<div class="score-bar" style="height:6px;"><div class="score-bar-fill" style="width:' + (p.upside_score || 0) + '%;background:' + color + '"></div></div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }
+
+    function positionStats(p, pos) {
+      // Show the most relevant stats based on position
+      var stats = [];
+      if (pos === 'QB') {
+        stats = [
+          { label: 'Pass Yards', value: fmt(p.passing_yards) },
+          { label: 'Pass TDs', value: fmt(p.passing_tds) },
+          { label: 'INTs', value: fmt(p.interceptions) },
+          { label: 'FPPG', value: fmt(p.fppg, 1) }
+        ];
+      } else if (pos === 'RB') {
+        stats = [
+          { label: 'Rush Yards', value: fmt(p.rushing_yards) },
+          { label: 'Rush TDs', value: fmt(p.rushing_tds) },
+          { label: 'Receptions', value: fmt(p.receptions) },
+          { label: 'FPPG', value: fmt(p.fppg, 1) }
+        ];
+      } else if (pos === 'WR') {
+        stats = [
+          { label: 'Rec Yards', value: fmt(p.receiving_yards) },
+          { label: 'Rec TDs', value: fmt(p.receiving_tds) },
+          { label: 'Receptions', value: fmt(p.receptions) },
+          { label: 'FPPG', value: fmt(p.fppg, 1) }
+        ];
+      } else if (pos === 'TE') {
+        stats = [
+          { label: 'Rec Yards', value: fmt(p.receiving_yards) },
+          { label: 'Rec TDs', value: fmt(p.receiving_tds) },
+          { label: 'Receptions', value: fmt(p.receptions) },
+          { label: 'FPPG', value: fmt(p.fppg, 1) }
+        ];
+      } else {
+        stats = [
+          { label: 'Fantasy Pts', value: fmt(p.fantasy_points) },
+          { label: 'Games', value: fmt(p.games) },
+          { label: 'FPPG', value: fmt(p.fppg, 1) },
+          { label: 'Score', value: fmt(p.recommendation_score, 1) }
+        ];
+      }
+
+      return stats.map(function(s) {
+        return '<div class="bg-slate-50 border border-slate-100 rounded-lg px-4 py-3">' +
+          '<p class="text-black text-sm mb-1">' + s.label + '</p>' +
+          '<p class="text-black font-bold text-lg">' + s.value + '</p>' +
+        '</div>';
+      }).join('');
+    }
+
+    function renderBestPickCard(p, pos) {
+      var color = posColor(pos);
+      // Determine the key stat to show based on position
+      var keyStat = '';
+      if (pos === 'QB') {
+        keyStat = fmt(p.passing_yards) + ' yds / ' + fmt(p.passing_tds) + ' TDs';
+      } else if (pos === 'RB') {
+        keyStat = fmt(p.rushing_yards) + ' yds / ' + fmt(p.rushing_tds) + ' TDs';
+      } else {
+        keyStat = fmt(p.receiving_yards) + ' yds / ' + fmt(p.receiving_tds) + ' TDs';
+      }
+
+      return '<div class="bg-slate-50 border border-slate-100 rounded-lg p-5 relative" style="border-left:4px solid ' + color + '">' +
+        '<div class="flex items-start justify-between mb-3">' +
+          '<span class="text-sm font-bold" style="color:#000;">#' + (p.rank || '--') + '</span>' +
+          '<span class="text-sm font-bold" style="color:#000;">' + fmt(p.fppg, 1) + ' <span class="font-normal">fppg</span></span>' +
+        '</div>' +
+        '<div class="flex items-center gap-3 mb-2">' + playerImg(p.sleeper_id, 48, p.position, p.team) +
+        '<div><p class="font-bold truncate mb-0.5" style="color:#000;font-size:1rem;">' + p.player_name + '</p>' +
+        '<p class="text-sm" style="color:#000;">' + (p.team || '--') + '</p></div></div>' +
+        '<p class="text-sm mb-3" style="color:#000;">' + keyStat + '</p>' +
+        '<div class="score-bar" style="height:6px;"><div class="score-bar-fill" style="width:' + (p.recommendation_score || 0) + '%;background:' + color + '"></div></div>' +
+      '</div>';
+    }
+
+    function sleeperTags(tags, size) {
+      return (tags || []).map(function(tag) {
+        var c = '#0f172a';
+        if (tag === 'Late Riser') c = '#52b788';
+        else if (tag === 'High Ceiling') c = '#e76f51';
+        else if (tag === 'Bounce Back') c = '#4895ef';
+        else if (tag === 'Value Pick') c = '#d4a843';
+        else if (tag === 'Young Gun') c = '#9b5de5';
+        else if (tag === 'Streaming Option') c = '#6b7280';
+        else if (tag === 'Upside') c = '#e76f51';
+        var pad = size === 'lg' ? 'px-3 py-1 text-sm' : 'px-2 py-0.5 text-xs';
+        return '<span class="inline-block ' + pad + ' font-bold rounded-md" style="background:' + c + '18;color:' + c + ';border:1px solid ' + c + '30;">' + tag + '</span>';
+      }).join(' ');
+    }
+
+    function sleeperStatBoxes(p, pos) {
+      var stats = [];
+      if (pos === 'QB') {
+        stats = [
+          { label: 'Pass Yards', value: fmt(p.passing_yards) },
+          { label: 'Pass TDs', value: fmt(p.passing_tds) },
+          { label: 'Rush Yards', value: fmt(p.rushing_yards) },
+          { label: 'FPPG', value: fmt(p.fppg, 1) }
+        ];
+      } else if (pos === 'RB') {
+        stats = [
+          { label: 'Rush Yards', value: fmt(p.rushing_yards) },
+          { label: 'Rush TDs', value: fmt(p.rushing_tds) },
+          { label: 'Receptions', value: fmt(p.receptions) },
+          { label: 'FPPG', value: fmt(p.fppg, 1) }
+        ];
+      } else if (pos === 'WR' || pos === 'TE') {
+        stats = [
+          { label: 'Rec Yards', value: fmt(p.receiving_yards) },
+          { label: 'Rec TDs', value: fmt(p.receiving_tds) },
+          { label: 'Targets', value: fmt(p.targets) },
+          { label: 'FPPG', value: fmt(p.fppg, 1) }
+        ];
+      } else if (pos === 'K') {
+        stats = [
+          { label: 'FG Made', value: fmt(p.fg_made) },
+          { label: 'FG %', value: fmt(p.fg_pct, 1) + '%' },
+          { label: 'Games', value: fmt(p.games) },
+          { label: 'FPPG', value: fmt(p.fppg, 1) }
+        ];
+      } else {
+        stats = [
+          { label: 'Sacks', value: fmt(p.sacks) },
+          { label: 'INTs', value: fmt(p.interceptions) },
+          { label: 'Games', value: fmt(p.games) },
+          { label: 'FPPG', value: fmt(p.fppg, 1) }
+        ];
+      }
+      return stats.map(function(s) {
+        return '<div class="bg-slate-50 border border-slate-100 rounded-lg px-4 py-3">' +
+          '<p class="text-sm mb-1" style="color:#000;">' + s.label + '</p>' +
+          '<p class="font-bold text-lg" style="color:#000;">' + s.value + '</p>' +
+        '</div>';
+      }).join('');
+    }
+
+    function renderSleepers(d) {
+      var sleepers = d.sleepers || {};
+      var positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'];
+
+      positions.forEach(function(pos) {
+        var container = document.getElementById('sleeper-' + pos);
+        if (!container) return;
+        var players = sleepers[pos] || [];
+        if (players.length === 0) {
+          container.innerHTML = '<p class="text-sm py-8 text-center" style="color:#000;">No sleeper data available for ' + pos + '.</p>';
+          return;
+        }
+
+        var color = posColor(pos);
+        var html = '';
+
+        // Featured #1 sleeper card (same style as top pick)
+        var top = players[0];
+        var topTrend = '';
+        if (top.first_half_fppg != null && top.second_half_fppg != null && top.first_half_fppg > 0) {
+          var d2 = top.second_half_fppg - top.first_half_fppg;
+          var pct = top.first_half_fppg > 0 ? Math.round((d2 / top.first_half_fppg) * 100) : 0;
+          var arr = d2 >= 0 ? '&#9650;' : '&#9660;';
+          var tc = d2 >= 0 ? '#52b788' : '#ef4444';
+          topTrend = '<div class="flex items-center gap-3 mt-4">' +
+            '<div class="bg-slate-50 border border-slate-100 rounded-lg px-4 py-3 flex-1">' +
+              '<p class="text-sm mb-1" style="color:#000;">1st Half FPPG</p>' +
+              '<p class="font-bold text-lg" style="color:#000;">' + fmt(top.first_half_fppg, 1) + '</p>' +
+            '</div>' +
+            '<div class="flex flex-col items-center">' +
+              '<span style="color:' + tc + ';font-size:1.5rem;">' + arr + '</span>' +
+              '<span class="text-xs font-bold" style="color:' + tc + ';">' + (d2 >= 0 ? '+' : '') + pct + '%</span>' +
+            '</div>' +
+            '<div class="bg-slate-50 border border-slate-100 rounded-lg px-4 py-3 flex-1">' +
+              '<p class="text-sm mb-1" style="color:#000;">2nd Half FPPG</p>' +
+              '<p class="font-bold text-lg" style="color:#000;">' + fmt(top.second_half_fppg, 1) + '</p>' +
+            '</div>' +
+          '</div>';
+        }
+
+        var topMeta = '';
+        if (top.age != null) topMeta += 'Age ' + fmt(top.age, 0);
+        if (top.years_exp != null) topMeta += (topMeta ? ' | ' : '') + top.years_exp + ' yr' + (top.years_exp !== 1 ? 's' : '') + ' exp';
+        if (top.adp_round != null) topMeta += (topMeta ? ' | ' : '') + 'ADP: Round ' + top.adp_round;
+        if (top.best_week) topMeta += (topMeta ? ' | ' : '') + 'Best week: ' + fmt(top.best_week, 1) + ' pts';
+
+        html += '<div class="bg-white shadow-sm border border-slate-200 rounded-lg p-8 mb-8">' +
+          '<div class="flex items-center gap-2 mb-2">' +
+            '<span class="text-sm font-bold uppercase tracking-wider" style="color:#000;">Top Sleeper</span>' +
+          '</div>' +
+          '<div class="flex flex-col md:flex-row gap-8">' +
+            '<div class="flex-1">' +
+              '<div class="flex items-center gap-4 mb-4">' +
+                playerImg(top.sleeper_id, 80, pos, top.team) +
+                '<span class="pos-badge" style="background:' + color + ';width:36px;height:36px;font-size:0.75rem;">' + pos + '</span>' +
+                '<div>' +
+                  '<h3 class="font-serif text-3xl font-bold" style="color:#000;">' + top.player_name + '</h3>' +
+                  '<p style="color:#000;font-size:1rem;">' + (top.team || '') + ' | ' + fmt(top.games) + ' games | ' + fmt(top.fantasy_points) + ' pts</p>' +
+                '</div>' +
+              '</div>' +
+              '<div class="flex flex-wrap gap-2 mb-4">' + sleeperTags(top.sleeper_tags, 'lg') + '</div>' +
+              '<div class="grid grid-cols-2 sm:grid-cols-4 gap-4">' + sleeperStatBoxes(top, pos) + '</div>' +
+              topTrend +
+              (topMeta ? '<p class="text-sm mt-4" style="color:#000;">' + topMeta + '</p>' : '') +
+            '</div>' +
+            '<div class="flex flex-col items-center justify-center gap-2">' +
+              '<p class="text-4xl font-bold" style="color:' + color + ';">' + fmt(top.fppg, 1) + '</p>' +
+              '<p class="text-sm font-bold" style="color:#000;">FPPG</p>' +
+              (top.boom_weeks ? '<p class="text-sm mt-2" style="color:#000;">' + fmt(top.boom_weeks) + ' boom weeks</p>' : '') +
+            '</div>' +
+          '</div>' +
+        '</div>';
+
+        // Remaining sleepers in a grid (same style as best picks)
+        var rest = players.slice(1);
+        if (rest.length > 0) {
+          html += '<h3 class="font-serif text-xl font-bold mb-5" style="color:#000;">More Sleepers to Watch</h3>';
+          html += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">';
+          rest.forEach(function(p) {
+            var pColor = posColor(p.position || pos);
+
+            var trendHtml = '';
+            if (p.first_half_fppg != null && p.second_half_fppg != null && p.first_half_fppg > 0) {
+              var diff = p.second_half_fppg - p.first_half_fppg;
+              var arrow = diff >= 0 ? '&#9650;' : '&#9660;';
+              var trendColor = diff >= 0 ? '#52b788' : '#ef4444';
+              trendHtml = '<div class="flex items-center gap-1 mt-2">' +
+                '<span style="color:' + trendColor + ';font-size:0.875rem;">' + arrow + '</span>' +
+                '<span class="text-sm" style="color:#000;">1st: ' + fmt(p.first_half_fppg, 1) + ' → 2nd: ' + fmt(p.second_half_fppg, 1) + '</span>' +
+              '</div>';
+            }
+
+            var metaLine = '';
+            if (p.age != null) metaLine += 'Age ' + fmt(p.age, 0);
+            if (p.years_exp != null) metaLine += (metaLine ? ' | ' : '') + p.years_exp + 'yr exp';
+            if (p.adp_round != null) metaLine += (metaLine ? ' | ' : '') + 'ADP Rd ' + p.adp_round;
+
+            html += '<div class="bg-white border border-slate-200 rounded-lg p-5 shadow-sm" style="border-left:4px solid ' + pColor + ';">' +
+              '<div class="flex items-start justify-between mb-3">' +
+                '<span class="text-sm font-bold" style="color:#000;">#' + p.rank + '</span>' +
+                '<span class="text-sm font-bold" style="color:#000;">' + fmt(p.fppg, 1) + ' <span class="font-normal">fppg</span></span>' +
+              '</div>' +
+              '<div class="flex items-center gap-3 mb-3">' +
+                playerImg(p.sleeper_id, 48, p.position || pos, p.team) +
+                '<div>' +
+                  '<p class="font-bold truncate mb-0.5" style="color:#000;font-size:1rem;">' + p.player_name + '</p>' +
+                  '<p class="text-sm" style="color:#000;">' + (p.team || '') + ' | ' + fmt(p.games) + ' gm</p>' +
+                '</div>' +
+              '</div>' +
+              '<div class="flex flex-wrap gap-1 mb-3">' + sleeperTags(p.sleeper_tags) + '</div>' +
+              (metaLine ? '<p class="text-sm mb-1" style="color:#000;">' + metaLine + '</p>' : '') +
+              (p.best_week ? '<p class="text-sm" style="color:#000;">Best wk: ' + fmt(p.best_week, 1) + ' | Boom: ' + fmt(p.boom_weeks) + '</p>' : '') +
+              trendHtml +
+            '</div>';
+          });
+          html += '</div>';
+        }
+
+        container.innerHTML = html;
+      });
+
+      // Auto-click first tab
+      var firstTab = document.querySelector('.sleeper-tab');
+      if (firstTab) firstTab.click();
+    }
+
+    // -- Auction Draft Values --
+    function auctionStatBoxes(p) {
+      var stats = [
+        { label: 'Auction Value', value: '$' + fmt(p.auction_value) },
+        { label: 'VOR', value: fmt(p.vor, 1) },
+        { label: 'FPPG', value: fmt(p.fppg, 1) },
+        { label: 'Pos Rank', value: '#' + fmt(p.pos_rank) },
+      ];
+      return stats.map(function(s) {
+        return '<div class="bg-slate-50 border border-slate-100 rounded-lg px-4 py-3">' +
+          '<p class="text-sm mb-1" style="color:#000;">' + s.label + '</p>' +
+          '<p class="font-bold text-lg" style="color:#000;">' + s.value + '</p>' +
+        '</div>';
+      }).join('');
+    }
+
+    function renderAuctionValues(d) {
+      var auction = d.auction_values;
+      if (!auction || !auction.by_position) {
+        var fb = document.getElementById('auction-fallback');
+        if (fb) fb.classList.remove('hidden');
+        return;
+      }
+
+      var settings = auction.settings || {};
+
+      // Budget info pills
+      var settingsBar = document.getElementById('auction-settings-bar');
+      if (settingsBar) {
+        var scoringLabel = (d.scoring_settings && d.scoring_settings[settings.scoring_format])
+          ? d.scoring_settings[settings.scoring_format].label : 'Half PPR';
+        var pills = [
+          { label: 'Budget / Team', value: '$' + fmt(settings.budget) },
+          { label: 'Usable', value: '$' + fmt(settings.usable_budget) },
+          { label: 'League Pool', value: '$' + fmt(settings.total_pool) },
+          { label: 'Scoring', value: scoringLabel },
+        ];
+        settingsBar.innerHTML = pills.map(function(p) {
+          return '<div class="bg-white border border-slate-200 rounded-lg px-4 py-2 shadow-sm">' +
+            '<p class="text-xs mb-0.5" style="color:#64748b;">' + p.label + '</p>' +
+            '<p class="font-bold text-sm" style="color:#000;">' + p.value + '</p>' +
+          '</div>';
+        }).join('');
+      }
+
+      // Render per-position content
+      var positions = ['ALL', 'QB', 'RB', 'WR', 'TE', 'K', 'DEF'];
+      positions.forEach(function(pos) {
+        var container = document.getElementById('auction-' + pos);
+        if (!container) return;
+
+        var players = pos === 'ALL'
+          ? (auction.top_overall || [])
+          : (auction.by_position[pos] || []);
+
+        if (players.length === 0) {
+          container.innerHTML = '<p class="text-sm py-8 text-center" style="color:#000;">No auction data for ' + pos + '.</p>';
+          return;
+        }
+
+        var html = '';
+
+        // Featured #1 player card
+        var top = players[0];
+        var topColor = posColor(top.position);
+        html += '<div class="bg-white shadow-sm border border-slate-200 rounded-lg p-8 mb-8">' +
+          '<div class="flex items-center gap-2 mb-2">' +
+            '<span class="text-sm font-bold uppercase tracking-wider" style="color:#64748b;">' +
+            (pos === 'ALL' ? 'Most Valuable Player' : 'Top ' + pos + ' Value') + '</span>' +
+          '</div>' +
+          '<div class="flex flex-col md:flex-row gap-8">' +
+            '<div class="flex-1">' +
+              '<div class="flex items-center gap-4 mb-4">' +
+                playerImg(top.sleeper_id, 80, top.position, top.team) +
+                '<span class="pos-badge" style="background:' + topColor + ';width:36px;height:36px;font-size:0.75rem;">' + top.position + '</span>' +
+                '<div>' +
+                  '<h3 class="font-serif text-3xl font-bold" style="color:#000;">' + top.player_name + '</h3>' +
+                  '<p style="color:#000;font-size:1rem;">' + (top.team || '') + ' | ' + fmt(top.fppg, 1) + ' FPPG | VOR: ' + fmt(top.vor, 1) + '</p>' +
+                '</div>' +
+              '</div>' +
+              '<div class="grid grid-cols-2 sm:grid-cols-4 gap-4">' + auctionStatBoxes(top) + '</div>' +
+            '</div>' +
+            '<div class="flex flex-col items-center justify-center gap-2">' +
+              '<p class="text-5xl font-bold" style="color:' + topColor + ';">$' + fmt(top.auction_value) + '</p>' +
+              '<p class="text-sm font-bold" style="color:#000;">Auction Value</p>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+
+        // Remaining players as table with load-more
+        var rest = players.slice(1);
+        if (rest.length > 0) {
+          var initialCount = 9; // Show 9 more after featured = 10 total visible
+          var initial = rest.slice(0, initialCount);
+          var extra = rest.slice(initialCount);
+          var tableId = 'auction-table-' + pos;
+          var btnId = 'auction-loadmore-' + pos;
+
+          var makeRow = (function(posKey) {
+            return function(p) {
+              var pColor = posColor(p.position);
+              var vorColor = p.vor > 0 ? '#16a34a' : (p.vor < 0 ? '#ef4444' : '#64748b');
+              return '<tr class="border-b border-slate-50 hover:bg-slate-50 transition-colors">' +
+                '<td class="px-5 py-3 text-sm font-bold" style="color:#000;">' + (posKey === 'ALL' ? p.auction_rank : p.pos_rank) + '</td>' +
+                '<td class="px-5 py-3 font-medium"><div class="flex items-center gap-3">' +
+                  playerImg(p.sleeper_id, 36, p.position, p.team) +
+                  '<span style="color:#000;font-size:0.9375rem;">' + p.player_name + '</span>' +
+                '</div></td>' +
+                '<td class="px-5 py-3"><span class="pos-badge" style="background:' + pColor + ';width:24px;height:24px;font-size:0.5625rem;">' + p.position + '</span></td>' +
+                '<td class="px-5 py-3 hidden sm:table-cell text-sm" style="color:#000;">' + (p.team || '--') + '</td>' +
+                '<td class="px-5 py-3 text-right text-sm" style="color:#000;">' + fmt(p.fppg, 1) + '</td>' +
+                '<td class="px-5 py-3 text-right text-sm hidden md:table-cell" style="color:' + vorColor + ';">' + (p.vor > 0 ? '+' : '') + fmt(p.vor, 1) + '</td>' +
+                '<td class="px-5 py-3 text-right font-bold text-lg" style="color:#000;">$' + fmt(p.auction_value) + '</td>' +
+              '</tr>';
+            };
+          })(pos);
+
+          html += '<div class="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm">' +
+            '<div class="overflow-x-auto">' +
+            '<table class="w-full text-base">' +
+            '<thead><tr class="text-left text-xs uppercase tracking-wider border-b border-slate-100" style="color:#64748b;">' +
+              '<th class="px-5 py-3 w-16">Rank</th>' +
+              '<th class="px-5 py-3">Player</th>' +
+              '<th class="px-5 py-3 w-16">Pos</th>' +
+              '<th class="px-5 py-3 w-20 hidden sm:table-cell">Team</th>' +
+              '<th class="px-5 py-3 w-20 text-right">FPPG</th>' +
+              '<th class="px-5 py-3 w-20 text-right hidden md:table-cell">VOR</th>' +
+              '<th class="px-5 py-3 w-24 text-right">Value</th>' +
+            '</tr></thead><tbody id="' + tableId + '">';
+
+          initial.forEach(function(p) { html += makeRow(p); });
+
+          html += '</tbody></table></div></div>';
+
+          if (extra.length > 0) {
+            html += '<div class="text-center mt-6" id="' + btnId + '-wrap">' +
+              '<button id="' + btnId + '" class="px-6 py-2.5 text-sm font-bold rounded-lg border-2 border-slate-200 bg-white hover:bg-slate-50 transition-colors" style="color:#000;">' +
+              'Load ' + extra.length + ' More Player' + (extra.length > 1 ? 's' : '') +
+              '</button></div>';
+          }
+
+          container.innerHTML = html;
+
+          // Wire up load-more after DOM is set
+          if (extra.length > 0) {
+            (function(extraPlayers, tId, bId, rowFn) {
+              var btn = document.getElementById(bId);
+              if (btn) {
+                btn.addEventListener('click', function() {
+                  var tbody = document.getElementById(tId);
+                  if (tbody) {
+                    var extraHtml = '';
+                    extraPlayers.forEach(function(p) { extraHtml += rowFn(p); });
+                    tbody.insertAdjacentHTML('beforeend', extraHtml);
+                  }
+                  var wrap = document.getElementById(bId + '-wrap');
+                  if (wrap) wrap.remove();
+                });
+              }
+            })(extra, tableId, btnId, makeRow);
+          }
+        } else {
+          container.innerHTML = html;
+        }
+      });
+
+      // Auto-click first tab
+      var firstTab = document.querySelector('.auction-tab');
+      if (firstTab) firstTab.click();
+    }
+
+    function renderAuctionBudgetChart(d) {
+      var auction = d.auction_values;
+      if (!auction || !auction.budget_allocation) return;
+
+      var alloc = auction.budget_allocation;
+      var positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'];
+      var datasets = [];
+
+      positions.forEach(function(pos) {
+        datasets.push({
+          label: pos + ' ($' + (alloc[pos] || 0) + ')',
+          data: [alloc[pos] || 0],
+          backgroundColor: posColor(pos) + 'cc',
+          borderColor: posColor(pos),
+          borderWidth: 1,
+          borderRadius: 2,
+        });
+      });
+
+      var ctx = document.getElementById('chart-auction-budget');
+      if (!ctx) return;
+      chartInstances['auctionBudget'] = new Chart(ctx.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: [''],
+          datasets: datasets,
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: true,
+              position: 'bottom',
+              labels: { color: '#0f172a', font: { size: 12, family: 'DM Sans' }, padding: 16 }
+            },
+            tooltip: {
+              callbacks: {
+                label: function(ctx) { return ctx.dataset.label; }
+              }
+            }
+          },
+          scales: {
+            x: {
+              stacked: true,
+              grid: { color: 'rgba(0,0,0,0.06)' },
+              ticks: { color: '#0f172a', callback: function(v) { return '$' + v; } },
+              max: auction.settings.usable_budget,
+            },
+            y: {
+              stacked: true,
+              display: false,
+            }
+          }
+        }
+      });
+    }
+
+    function renderStrategyGuide(d) {
+      var container = document.getElementById('strategy-guide');
+      var scarcity = d.position_scarcity || {};
+
+      // Analyze scarcity to generate advice
+      // Higher scarcity = fewer startable players relative to demand = draft earlier
+      var positionPriority = [];
+      var positions = ['QB', 'RB', 'WR', 'TE'];
+      positions.forEach(function(pos) {
+        var data = scarcity[pos];
+        if (!data) return;
+        // Scarcity ratio: lower startable-to-starters means scarcer
+        var needed = 0;
+        var slots = safeGet(d, 'draft_format.roster_slots', {});
+        if (slots[pos]) needed = slots[pos].starters || 0;
+        // Also count FLEX for RB/WR/TE
+        if ((pos === 'RB' || pos === 'WR' || pos === 'TE') && slots.FLEX) {
+          needed += (slots.FLEX.starters || 0) * 0.33; // Partial FLEX weight
+        }
+        var teams = safeGet(d, 'draft_format.teams', 12);
+        var totalNeeded = needed * teams;
+        var ratio = totalNeeded > 0 ? data.startable / totalNeeded : 999;
+        positionPriority.push({ pos: pos, ratio: ratio, startable: data.startable, elite: data.elite_tier });
+      });
+
+      // Sort by scarcity (lower ratio = scarcer = draft earlier)
+      positionPriority.sort(function(a, b) { return a.ratio - b.ratio; });
+
+      var rounds = safeGet(d, 'draft_format.rounds', 15);
+
+      // Generate strategy advice based on data
+      var strategies = [];
+
+      // Rounds 1-3: Highest scarcity positions
+      var earlyPos = positionPriority.slice(0, 2).map(function(p) { return p.pos; });
+      strategies.push({
+        rounds: 'Rounds 1-3',
+        advice: 'Target ' + earlyPos.join('s and ') + 's -- highest positional scarcity with only ' +
+          positionPriority[0].elite + ' elite-tier ' + positionPriority[0].pos + 's available.',
+        color: '#e76f51'
+      });
+
+      // Rounds 4-6
+      var midHighPos = positionPriority.length > 2 ? positionPriority[2].pos : 'WR';
+      strategies.push({
+        rounds: 'Rounds 4-6',
+        advice: 'Secure ' + midHighPos + ' depth and lock in a top-tier option. Also consider the best available ' +
+          positionPriority[1].pos + ' if elite talent remains.',
+        color: '#d4a843'
+      });
+
+      // Rounds 7-9
+      var deepestPos = positionPriority[positionPriority.length - 1];
+      strategies.push({
+        rounds: 'Rounds 7-9',
+        advice: 'Target ' + deepestPos.pos + ' -- the deepest position with ' + deepestPos.startable +
+          ' startable options. Value picks are available here without reaching.',
+        color: '#52b788'
+      });
+
+      // Rounds 10-12
+      strategies.push({
+        rounds: 'Rounds 10-12',
+        advice: 'Best available FLEX-eligible players. Focus on upside over floor -- these are bench starters with breakout potential.',
+        color: '#4895ef'
+      });
+
+      // Rounds 13-end
+      strategies.push({
+        rounds: 'Rounds ' + Math.max(13, rounds - 2) + '-' + rounds,
+        advice: 'Fill K and DEF slots, then add bench depth. Stream-friendly positions -- prioritize high-upside handcuffs over "safe" picks.',
+        color: '#9b5de5'
+      });
+
+      strategies.forEach(function(s) {
+        var div = document.createElement('div');
+        div.className = 'flex gap-4 items-start';
+        div.innerHTML =
+          '<div class="flex-shrink-0 w-2 h-2 rounded-full mt-2" style="background:' + s.color + '"></div>' +
+          '<div>' +
+            '<p class="text-black font-bold text-sm mb-0.5">' + s.rounds + '</p>' +
+            '<p class="text-black text-sm leading-relaxed">' + s.advice + '</p>' +
+          '</div>';
+        container.appendChild(div);
+      });
+    }
+
+    // -- Section 5: Takeaway --
+    function renderTakeaway(d, status, isLive) {
+      var recs = d.recommendations || {};
+      var topOverall = d.top_overall || [];
+
+      // Build narrative
+      var narrative = '';
+      var topQB = safeGet(recs, 'QB.top_pick', null);
+      var topRB = safeGet(recs, 'RB.top_pick', null);
+
+      if (isLive) {
+        narrative = 'Through Week ' + status.weeks_available + ' of the ' + status.season + ' season, ';
+        if (topQB) {
+          narrative += topQB.player_name + ' is leading all quarterbacks with ' + fmt(topQB.fppg, 1) + ' fantasy points per game. ';
+        }
+        if (topRB) {
+          narrative += 'At running back, ' + topRB.player_name + ' is the top option, averaging ' + fmt(topRB.fppg, 1) + ' points per game. ';
+        }
+        narrative += 'These rankings will continue to update as the season progresses.';
+      } else {
+        narrative = 'The ' + status.season + ' season ';
+        if (topQB) {
+          narrative += 'revealed ' + topQB.player_name + ' as the premier fantasy quarterback, averaging ' + fmt(topQB.fppg, 1) + ' points per game across ' + fmt(topQB.games) + ' games. ';
+        }
+        if (topRB) {
+          narrative += topRB.player_name + ' dominated the running back position with ' + fmt(topRB.fppg, 1) + ' points per game, making the position a priority in early rounds. ';
+        }
+        narrative += 'This analysis distills a full season of data into actionable draft recommendations.';
+      }
+
+      document.getElementById('takeaway-narrative').textContent = narrative;
+
+      // Key insights
+      var insights = [];
+
+      // 1. Most valuable position to draft early (highest scarcity)
+      var scarcity = d.position_scarcity || {};
+      var scarcestPos = null;
+      var lowestRatio = Infinity;
+      ['RB', 'WR', 'TE', 'QB'].forEach(function(pos) {
+        var sc = scarcity[pos];
+        if (sc && sc.elite_tier) {
+          var ratio = sc.elite_tier / sc.startable;
+          if (sc.startable < lowestRatio * 2) {
+            // Use a simple heuristic: fewer startable = scarcer
+            if (sc.startable < lowestRatio) {
+              // Track position with fewest startable relative to need
+            }
+          }
+          // Simpler: just use elite_tier as a fraction of startable
+          var eliteRate = sc.elite_tier / (sc.startable || 1);
+          if (eliteRate < lowestRatio) {
+            lowestRatio = eliteRate;
+            scarcestPos = pos;
+          }
+        }
+      });
+      if (scarcestPos) {
+        var scData = scarcity[scarcestPos];
+        insights.push('Most scarce position: <span class="text-black font-bold">' + scarcestPos + '</span> -- only ' + scData.elite_tier + ' elite-tier options out of ' + scData.startable + ' startable players. Draft early.');
+      }
+
+      // 2. Biggest value pick
+      if (d.adp_comparison && d.adp_comparison.steals && d.adp_comparison.steals.length > 0) {
+        var bestSteal = d.adp_comparison.steals[0];
+        insights.push('Biggest steal: <span class="text-black font-bold">' + bestSteal.player_name + '</span> (' + bestSteal.position + ') -- ranked #' + bestSteal.rank + ' but has an ADP of Round ' + bestSteal.adp_round + '. A ' + (bestSteal.round_diff || bestSteal.diff) + '-round value gap.');
+      } else if (topOverall.length > 5) {
+        // Without ADP data, highlight a mid-round value
+        var valuePick = topOverall[4]; // 5th overall as a value proxy
+        insights.push('Value target: <span class="text-black font-bold">' + valuePick.player_name + '</span> (' + valuePick.position + ') -- ranked #' + valuePick.rank + ' overall with ' + fmt(valuePick.fppg, 1) + ' FPPG. Often available in later rounds.');
+      }
+
+      // 3. Most consistent player
+      var mostConsistent = null;
+      var highestConsistency = 0;
+      ['QB', 'RB', 'WR', 'TE'].forEach(function(pos) {
+        var top = safeGet(recs, pos + '.top_pick', null);
+        if (top && (top.consistency_score || 0) > highestConsistency) {
+          highestConsistency = top.consistency_score;
+          mostConsistent = top;
+        }
+      });
+      if (mostConsistent) {
+        insights.push('Most consistent player: <span class="text-black font-bold">' + mostConsistent.player_name + '</span> (' + mostConsistent.position + ') -- consistency score of ' + fmt(mostConsistent.consistency_score, 0) + '/100. A safe floor every week.');
+      }
+
+      var insightsContainer = document.getElementById('takeaway-insights');
+      insights.forEach(function(text, i) {
+        var div = document.createElement('div');
+        div.className = 'flex gap-3 items-start';
+        div.innerHTML =
+          '<span class="flex-shrink-0 w-6 h-6 rounded-full bg-surface border border-slate-200 flex items-center justify-center text-xs text-black font-bold mt-0.5">' + (i + 1) + '</span>' +
+          '<p class="text-black leading-relaxed">' + text + '</p>';
+        insightsContainer.appendChild(div);
+      });
+
+      // Tools grid
+      var tools = ['Python', 'Pandas', 'nfl_data_py', 'Chart.js', 'Tailwind CSS'];
+      var hasAdp = d.adp_comparison && (d.adp_comparison.steals || d.adp_comparison.reaches);
+      if (hasAdp) tools.push('Sleeper API');
+
+      var toolsGrid = document.getElementById('tools-grid');
+      tools.forEach(function(name) {
+        var span = document.createElement('span');
+        span.className = 'inline-block px-4 py-2 rounded-lg text-sm font-medium bg-surface border border-slate-200 text-black';
+        span.textContent = name;
+        toolsGrid.appendChild(span);
+      });
+
+      // ADP attribution
+      if (hasAdp) {
+        document.getElementById('adp-attribution').classList.remove('hidden');
+      }
+    }
+
+    // -- Footer --
+    function renderFooter(d, status) {
+      document.getElementById('footer-date').textContent = 'Data as of ' + (status.last_updated || '--');
+    }
+
+    // -- Charts --
+    function renderCharts(d) {
+      renderFppgByPositionChart(d);
+      renderWeeklyTrendsChart(d);
+      renderScarcityChart(d);
+      renderAdpChart(d);
+      renderAuctionBudgetChart(d);
+    }
+
+    function renderFppgByPositionChart(d) {
+      var recs = d.recommendations || {};
+      var positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'];
+      var datasets = [];
+      var labels = [];
+      var maxPlayers = 5;
+
+      // Collect top 5 players per position
+      positions.forEach(function(pos) {
+        var picks = safeGet(recs, pos + '.best_picks', []);
+        var topPick = safeGet(recs, pos + '.top_pick', null);
+        var allPicks = [];
+        if (topPick) allPicks.push(topPick);
+        allPicks = allPicks.concat(picks).slice(0, maxPlayers);
+
+        allPicks.forEach(function(p, i) {
+          var label = p.player_name ? p.player_name.split(' ').pop() : 'P' + (i + 1);
+          if (labels.indexOf(pos + ' - ' + label) === -1) {
+            labels.push(pos + ' - ' + label);
+          }
+        });
+      });
+
+      // Build as a horizontal grouped bar chart
+      // Each position is a dataset, each bar is a player
+      var allLabels = [];
+      var dataByPosition = {};
+
+      positions.forEach(function(pos) {
+        var picks = safeGet(recs, pos + '.best_picks', []);
+        var topPick = safeGet(recs, pos + '.top_pick', null);
+        var allPicks = [];
+        if (topPick) allPicks.push(topPick);
+        allPicks = allPicks.concat(picks).slice(0, maxPlayers);
+
+        dataByPosition[pos] = allPicks.map(function(p) {
+          return { name: p.player_name || 'Unknown', fppg: p.fppg || 0 };
+        });
+      });
+
+      // Flatten into a single chart: labels are player names, colored by position
+      var chartLabels = [];
+      var chartData = [];
+      var chartColors = [];
+
+      positions.forEach(function(pos) {
+        var players = dataByPosition[pos] || [];
+        players.forEach(function(p) {
+          chartLabels.push(p.name);
+          chartData.push(p.fppg);
+          chartColors.push(posColor(pos));
+        });
+      });
+
+      var ctx = document.getElementById('chart-fppg-position').getContext('2d');
+      chartInstances['fppg'] = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: chartLabels,
+          datasets: [{
+            data: chartData,
+            backgroundColor: chartColors.map(function(c) { return c + '66'; }),
+            borderColor: chartColors,
+            borderWidth: 1,
+            borderRadius: 3,
+            barThickness: 14
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(ctx) { return ctx.parsed.x.toFixed(1) + ' FPPG'; }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(0,0,0,0.06)' },
+              ticks: { color: '#0f172a' },
+              title: { display: true, text: 'Fantasy Points Per Game', color: '#0f172a' }
+            },
+            y: {
+              grid: { display: false },
+              ticks: {
+                color: '#0f172a',
+                font: { size: 10 },
+                callback: function(value, index) {
+                  var label = chartLabels[index] || '';
+                  return label.length > 18 ? label.substring(0, 16) + '..' : label;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function renderWeeklyTrendsChart(d) {
+      var trends = d.weekly_trends || [];
+      if (trends.length === 0) return;
+
+      var weeks = trends.map(function(t) { return 'Wk ' + t.week; });
+      var positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'];
+      var datasets = positions.map(function(pos) {
+        return {
+          label: pos,
+          data: trends.map(function(t) { return t[pos + '_avg'] || 0; }),
+          borderColor: posColor(pos),
+          backgroundColor: posColor(pos) + '1A',
+          fill: false,
+          tension: 0.3,
+          borderWidth: 2,
+          pointRadius: 2,
+          pointHoverRadius: 5
+        };
+      });
+
+      var ctx = document.getElementById('chart-weekly-trends').getContext('2d');
+      chartInstances['weekly'] = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: weeks,
+          datasets: datasets
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            mode: 'index',
+            intersect: false
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(ctx) { return ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(1); }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(0,0,0,0.06)' },
+              ticks: { color: '#0f172a' }
+            },
+            y: {
+              grid: { color: 'rgba(0,0,0,0.06)' },
+              ticks: { color: '#0f172a' },
+              title: { display: true, text: 'Avg Fantasy Points', color: '#0f172a' }
+            }
+          }
+        }
+      });
+    }
+
+    function renderScarcityChart(d) {
+      var scarcity = d.position_scarcity || {};
+      var positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'];
+      var startable = [];
+      var elite = [];
+      var colors = [];
+
+      positions.forEach(function(pos) {
+        var sc = scarcity[pos];
+        startable.push(sc ? sc.startable : 0);
+        elite.push(sc ? sc.elite_tier : 0);
+        colors.push(posColor(pos));
+      });
+
+      var ctx = document.getElementById('chart-scarcity').getContext('2d');
+      chartInstances['scarcity'] = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: positions,
+          datasets: [
+            {
+              label: 'Startable',
+              data: startable,
+              backgroundColor: colors.map(function(c) { return c + '40'; }),
+              borderColor: colors,
+              borderWidth: 1,
+              borderRadius: 4
+            },
+            {
+              label: 'Elite Tier',
+              data: elite,
+              backgroundColor: colors.map(function(c) { return c + 'CC'; }),
+              borderColor: colors,
+              borderWidth: 1,
+              borderRadius: 4
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(ctx) { return ctx.dataset.label + ': ' + ctx.parsed.y + ' players'; }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { color: '#0f172a' }
+            },
+            y: {
+              grid: { color: 'rgba(0,0,0,0.06)' },
+              ticks: { color: '#0f172a' },
+              title: { display: true, text: 'Number of Players', color: '#0f172a' }
+            }
+          }
+        }
+      });
+    }
+
+    function renderAdpChart(d) {
+      var hasAdp = d.adp_comparison && (d.adp_comparison.steals || d.adp_comparison.reaches);
+
+      if (!hasAdp) {
+        document.getElementById('adp-fallback').classList.remove('hidden');
+        return;
+      }
+
+      document.getElementById('adp-section').classList.remove('hidden');
+
+      var steals = (d.adp_comparison.steals || []).slice(0, 8);
+      var reaches = (d.adp_comparison.reaches || []).slice(0, 8);
+      var all = [];
+
+      steals.forEach(function(p) {
+        all.push({ name: p.player_name, diff: p.round_diff || p.diff || 0, pos: p.position, type: 'steal' });
+      });
+      reaches.forEach(function(p) {
+        all.push({ name: p.player_name, diff: p.round_diff || p.diff || 0, pos: p.position, type: 'reach' });
+      });
+
+      // Sort by diff descending (steals first, then reaches)
+      all.sort(function(a, b) { return b.diff - a.diff; });
+
+      var labels = all.map(function(p) { return p.name; });
+      var data = all.map(function(p) { return p.diff; });
+      var bgColors = all.map(function(p) {
+        return p.diff > 0 ? '#52b78866' : '#e76f5166';
+      });
+      var borderColors = all.map(function(p) {
+        return p.diff > 0 ? '#52b788' : '#e76f51';
+      });
+
+      var ctx = document.getElementById('chart-adp').getContext('2d');
+      chartInstances['adp'] = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: data,
+            backgroundColor: bgColors,
+            borderColor: borderColors,
+            borderWidth: 1,
+            borderRadius: 3,
+            barThickness: 16
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(ctx) {
+                  var val = ctx.parsed.x;
+                  return val > 0 ? 'Steal: +' + val + ' rounds of value' : 'Reach: ' + val + ' rounds overvalued';
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(0,0,0,0.06)' },
+              ticks: { color: '#0f172a' },
+              title: { display: true, text: 'ADP Value Difference (rounds)', color: '#0f172a' }
+            },
+            y: {
+              grid: { display: false },
+              ticks: {
+                color: '#0f172a',
+                font: { size: 10 },
+                callback: function(value, index) {
+                  var label = labels[index] || '';
+                  return label.length > 18 ? label.substring(0, 16) + '..' : label;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // ================================================================
+    // MOCK DRAFT SIMULATOR
+    // ================================================================
+    var draftState = null;
+
+    function renderMockDraft(d) {
+      var pool = d.draft_pool;
+      if (!pool || !pool.length) {
+        document.getElementById('mock-draft-setup').classList.add('hidden');
+        document.getElementById('mock-draft-fallback').classList.remove('hidden');
+        return;
+      }
+
+      // Build position selector buttons
+      var grid = document.getElementById('draft-position-grid');
+      grid.innerHTML = '';
+      for (var i = 1; i <= 6; i++) {
+        var btn = document.createElement('button');
+        btn.className = 'pick-slot-btn';
+        btn.textContent = i;
+        btn.dataset.pos = i;
+        btn.addEventListener('click', function() {
+          var pos = parseInt(this.dataset.pos);
+          document.querySelectorAll('.pick-slot-btn').forEach(function(b) { b.classList.remove('selected'); });
+          this.classList.add('selected');
+          document.getElementById('start-draft-btn').disabled = false;
+          draftState = draftState || {};
+          draftState.userSlot = pos;
+          // Show pick preview
+          var picks = [];
+          for (var r = 1; r <= 15; r++) {
+            var pick = (r % 2 === 1) ? (r - 1) * 6 + pos : r * 6 - pos + 1;
+            picks.push(pick);
+          }
+          document.getElementById('draft-pick-preview').innerHTML =
+            '<span class="font-bold" style="color:#0f172a;">Pick ' + pos + ':</span> Your picks are #' +
+            picks.slice(0, 5).join(', #') + ' ... (15 total)';
+        });
+        grid.appendChild(btn);
+      }
+
+      document.getElementById('start-draft-btn').addEventListener('click', function() {
+        startDraft(pool);
+      });
+    }
+
+    function startDraft(pool) {
+      var userSlot = draftState.userSlot;
+
+      // Build 6 teams with empty rosters
+      var teams = [];
+      for (var t = 0; t < 6; t++) {
+        teams.push({
+          index: t,
+          name: t === (userSlot - 1) ? 'Your Team' : 'Team ' + (t + 1),
+          isUser: t === (userSlot - 1),
+          picks: [],
+          roster: { QB: [], RB: [], WR: [], TE: [], K: [], DEF: [] }
+        });
+      }
+
+      draftState = {
+        userSlot: userSlot,
+        teams: teams,
+        available: pool.map(function(p) { return Object.assign({}, p); }),
+        currentPick: 0,
+        totalPicks: 90,
+        totalRounds: 15,
+        totalTeams: 6,
+        speed: 600,
+        paused: false,
+        finished: false
+      };
+
+      // Switch to active phase
+      document.getElementById('mock-draft-setup').classList.add('hidden');
+      document.getElementById('mock-draft-active').classList.remove('hidden');
+
+      // Build empty draft board grid (header row + 15 round rows)
+      buildDraftBoardGrid();
+      buildMyRosterSlots();
+
+      // Speed buttons
+      document.querySelectorAll('.speed-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          document.querySelectorAll('.speed-btn').forEach(function(b) { b.classList.remove('active'); });
+          this.classList.add('active');
+          draftState.speed = parseInt(this.dataset.speed);
+        });
+      });
+
+      // Position filter buttons
+      document.querySelectorAll('.draft-pos-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          document.querySelectorAll('.draft-pos-btn').forEach(function(b) { b.classList.remove('active'); });
+          this.classList.add('active');
+          renderAvailablePlayers(this.dataset.filter);
+        });
+      });
+
+      // Search input
+      document.getElementById('draft-search').addEventListener('input', function() {
+        var activeFilter = document.querySelector('.draft-pos-btn.active');
+        renderAvailablePlayers(activeFilter ? activeFilter.dataset.filter : 'ALL');
+      });
+
+      // Sortable column headers
+      setupDraftSortHeaders();
+
+      advanceDraft();
+    }
+
+    function buildDraftBoardGrid() {
+      var board = document.getElementById('mock-board-grid');
+      var cols = draftState.totalTeams + 1; // +1 for round label column
+      board.style.gridTemplateColumns = '40px repeat(' + draftState.totalTeams + ', 1fr)';
+      board.innerHTML = '';
+
+      // Header row
+      var corner = document.createElement('div');
+      corner.className = 'draft-cell draft-cell-header';
+      corner.textContent = 'Rd';
+      board.appendChild(corner);
+
+      for (var t = 0; t < draftState.totalTeams; t++) {
+        var hdr = document.createElement('div');
+        var isUser = draftState.teams[t].isUser;
+        hdr.className = 'draft-cell draft-cell-header' + (isUser ? ' user-col' : '');
+        hdr.textContent = isUser ? 'YOU' : 'T' + (t + 1);
+        board.appendChild(hdr);
+      }
+
+      // 15 round rows
+      for (var r = 1; r <= draftState.totalRounds; r++) {
+        var rdCell = document.createElement('div');
+        rdCell.className = 'draft-cell draft-cell-round';
+        rdCell.textContent = r;
+        board.appendChild(rdCell);
+
+        for (var t = 0; t < draftState.totalTeams; t++) {
+          var cell = document.createElement('div');
+          var isUser = draftState.teams[t].isUser;
+          cell.className = 'draft-cell' + (isUser ? ' user-col' : '');
+          cell.id = 'dc-' + r + '-' + t;
+          cell.innerHTML = '<span style="color:#d1d5db;">--</span>';
+          board.appendChild(cell);
+        }
+      }
+    }
+
+    function buildMyRosterSlots() {
+      var container = document.getElementById('my-roster-slots');
+      var slotOrder = ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'TE', 'FLEX', 'K', 'DEF', 'BE1', 'BE2', 'BE3', 'BE4', 'BE5', 'BE6'];
+      container.innerHTML = '';
+      slotOrder.forEach(function(slot) {
+        var div = document.createElement('div');
+        div.className = 'roster-slot';
+        var label = slot.replace(/\d+$/, '');
+        if (slot.startsWith('BE')) label = 'BN';
+        div.innerHTML = '<span class="slot-label">' + label + '</span>' +
+          '<span class="slot-player" id="roster-' + slot + '" style="color:#94a3b8;">Empty</span>';
+        container.appendChild(div);
+      });
+    }
+
+    function getTeamIndexForPick(pickNum) {
+      // Snake draft: odd rounds go 0-11, even rounds go 11-0
+      var round = Math.floor(pickNum / draftState.totalTeams);
+      var posInRound = pickNum % draftState.totalTeams;
+      if (round % 2 === 0) {
+        return posInRound;
+      } else {
+        return draftState.totalTeams - 1 - posInRound;
+      }
+    }
+
+    function advanceDraft() {
+      if (draftState.finished || draftState.currentPick >= draftState.totalPicks) {
+        finishDraft();
+        return;
+      }
+
+      var teamIdx = getTeamIndexForPick(draftState.currentPick);
+      var team = draftState.teams[teamIdx];
+      var round = Math.floor(draftState.currentPick / draftState.totalTeams) + 1;
+      var pickInRound = (draftState.currentPick % draftState.totalTeams) + 1;
+
+      // Update status bar
+      document.getElementById('draft-round-num').textContent = round;
+      document.getElementById('draft-pick-num').textContent = draftState.currentPick + 1;
+      var clockEl = document.getElementById('draft-on-clock').querySelector('span:last-child');
+      clockEl.textContent = 'On the clock: ' + team.name;
+
+      // Highlight current cell
+      document.querySelectorAll('.draft-cell.current-pick').forEach(function(c) {
+        c.classList.remove('current-pick');
+      });
+      var currentCell = document.getElementById('dc-' + round + '-' + teamIdx);
+      if (currentCell) currentCell.classList.add('current-pick');
+
+      if (team.isUser) {
+        // Show user pick panel, hide AI message
+        document.getElementById('ai-picking-msg').classList.add('hidden');
+        showUserPickPanel(round);
+      } else {
+        // Show AI message, hide pick panel
+        document.getElementById('ai-picking-msg').classList.remove('hidden');
+        document.getElementById('user-pick-panel').classList.add('hidden');
+        // AI pick with delay
+        setTimeout(function() {
+          var player = aiPickPlayer(team, draftState.available, round, draftState.totalRounds);
+          if (player) {
+            executePick(teamIdx, player, round);
+          }
+          advanceDraft();
+        }, draftState.speed);
+      }
+    }
+
+    function aiPickPlayer(team, available, round, totalRounds) {
+      if (!available.length) return null;
+
+      var roster = team.roster;
+      var rosterCount = function(pos) { return (roster[pos] || []).length; };
+      var totalPicked = team.picks.length;
+
+      // Hard caps
+      var caps = { QB: 2, RB: 5, WR: 5, TE: 2, K: 1, DEF: 1 };
+
+      // Starter needs (unfilled mandatory slots)
+      var needs = {
+        QB: Math.max(0, 1 - rosterCount('QB')),
+        RB: Math.max(0, 2 - rosterCount('RB')),
+        WR: Math.max(0, 2 - rosterCount('WR')),
+        TE: Math.max(0, 1 - rosterCount('TE')),
+        K: Math.max(0, 1 - rosterCount('K')),
+        DEF: Math.max(0, 1 - rosterCount('DEF'))
+      };
+
+      // Flex need (RB/WR/TE beyond starters)
+      var flexFilled = Math.max(0, rosterCount('RB') - 2) + Math.max(0, rosterCount('WR') - 2) + Math.max(0, rosterCount('TE') - 1);
+      var flexNeed = flexFilled < 1 ? 1 : 0;
+
+      var scored = [];
+      for (var i = 0; i < available.length; i++) {
+        var p = available[i];
+        var pos = p.position;
+
+        // Enforce hard caps
+        if (rosterCount(pos) >= caps[pos]) continue;
+
+        // K/DEF enforcement: never before round 11
+        if ((pos === 'K' || pos === 'DEF') && round < 11) continue;
+
+        // Force K/DEF in rounds 13-15 if empty
+        if (round >= 13 && needs['K'] > 0 && pos !== 'K' && pos !== 'DEF' && rosterCount('K') === 0) {
+          // Only allow K picks
+          if (pos !== 'K') continue;
+        }
+        if (round >= 14 && needs['DEF'] > 0 && rosterCount('DEF') === 0) {
+          if (pos !== 'DEF') continue;
+        }
+
+        // Score: lower ADP rank = better base score
+        var score = 300 - p.adp_rank;
+
+        // Boost for unfilled starter needs
+        if (needs[pos] > 0) {
+          score += 40;
+        } else if (pos === 'RB' || pos === 'WR' || pos === 'TE') {
+          if (flexNeed > 0) score += 15;
+        }
+
+        // Penalize positions already filled past starters
+        if (needs[pos] <= 0) {
+          score -= 20;
+        }
+
+        // K/DEF round-appropriate bonus
+        if ((pos === 'K' || pos === 'DEF') && round >= 13) {
+          score += 30;
+        }
+
+        // Small random noise so drafts differ
+        score += (Math.random() - 0.5) * 20;
+
+        scored.push({ player: p, score: score });
+      }
+
+      // Fallback for forced K/DEF: relax constraints if nothing scored
+      if (scored.length === 0) {
+        for (var i = 0; i < available.length; i++) {
+          var p = available[i];
+          if (rosterCount(p.position) >= caps[p.position]) continue;
+          scored.push({ player: p, score: 300 - p.adp_rank + (Math.random() - 0.5) * 10 });
+        }
+      }
+
+      if (!scored.length) return available[0] || null;
+
+      scored.sort(function(a, b) { return b.score - a.score; });
+      return scored[0].player;
+    }
+
+    function showUserPickPanel(round) {
+      draftState.paused = true;
+      document.getElementById('ai-picking-msg').classList.add('hidden');
+      var panel = document.getElementById('user-pick-panel');
+      panel.classList.remove('hidden');
+
+      // Reset filter to ALL
+      document.querySelectorAll('.draft-pos-btn').forEach(function(b) { b.classList.remove('active'); });
+      document.querySelector('.draft-pos-btn[data-filter="ALL"]').classList.add('active');
+      document.getElementById('draft-search').value = '';
+
+      renderSuggestions(round);
+      renderAvailablePlayers('ALL');
+    }
+
+    function renderSuggestions(round) {
+      var container = document.getElementById('draft-suggestions');
+      container.innerHTML = '';
+      var team = draftState.teams.find(function(t) { return t.isUser; });
+      if (!team) return;
+
+      // Use AI logic to get top 3 suggestions
+      var tempScored = [];
+      var roster = team.roster;
+      var rosterCount = function(pos) { return (roster[pos] || []).length; };
+      var caps = { QB: 2, RB: 5, WR: 5, TE: 2, K: 1, DEF: 1 };
+      var needs = {
+        QB: Math.max(0, 1 - rosterCount('QB')),
+        RB: Math.max(0, 2 - rosterCount('RB')),
+        WR: Math.max(0, 2 - rosterCount('WR')),
+        TE: Math.max(0, 1 - rosterCount('TE')),
+        K: Math.max(0, 1 - rosterCount('K')),
+        DEF: Math.max(0, 1 - rosterCount('DEF'))
+      };
+
+      draftState.available.forEach(function(p) {
+        if (rosterCount(p.position) >= caps[p.position]) return;
+        // FPPG is the primary signal since we have actual performance data;
+        // ADP is a light tiebreaker
+        var score = (p.fppg * 12) + (300 - p.adp_rank) * 0.3;
+        if (needs[p.position] > 0) score += 30;
+        tempScored.push({ player: p, score: score });
+      });
+
+      tempScored.sort(function(a, b) { return b.score - a.score; });
+      var top3 = tempScored.slice(0, 3);
+
+      top3.forEach(function(s) {
+        var chip = document.createElement('button');
+        chip.className = 'flex items-center gap-2 px-3 py-1.5 border border-accent/30 rounded-lg text-sm font-medium hover:bg-accent/5 transition-colors';
+        chip.style.color = '#0f172a';
+        var posBg = posColor(s.player.position);
+        chip.innerHTML = '<span class="pick-pos" style="background:' + posBg + ';">' + s.player.position + '</span> ' +
+          s.player.player_name + ' <span style="color:#64748b;">' + fmt(s.player.fppg, 1) + '</span>';
+        chip.addEventListener('click', function() {
+          userSelectPlayer(s.player.id);
+        });
+        container.appendChild(chip);
+      });
+    }
+
+    // Sort state for available players table
+    var draftSort = { key: 'adp_rank', dir: 'asc' };
+
+    function setupDraftSortHeaders() {
+      document.querySelectorAll('[data-sort]').forEach(function(th) {
+        th.addEventListener('click', function() {
+          var key = this.dataset.sort;
+          if (draftSort.key === key) {
+            draftSort.dir = draftSort.dir === 'asc' ? 'desc' : 'asc';
+          } else {
+            draftSort.key = key;
+            // Default descending for FPPG, ascending for everything else
+            draftSort.dir = key === 'fppg' ? 'desc' : 'asc';
+          }
+          // Update arrow indicators
+          document.querySelectorAll('[data-sort] .sort-arrow').forEach(function(s) { s.textContent = ''; });
+          this.querySelector('.sort-arrow').textContent = draftSort.dir === 'asc' ? ' \u25B2' : ' \u25BC';
+          var activeFilter = document.querySelector('.draft-pos-btn.active');
+          renderAvailablePlayers(activeFilter ? activeFilter.dataset.filter : 'ALL');
+        });
+      });
+    }
+
+    function renderAvailablePlayers(filter) {
+      var tbody = document.getElementById('available-players-body');
+      tbody.innerHTML = '';
+      var search = (document.getElementById('draft-search').value || '').toLowerCase();
+
+      var available = draftState.available.filter(function(p) {
+        if (filter !== 'ALL' && p.position !== filter) return false;
+        if (search && p.player_name.toLowerCase().indexOf(search) === -1) return false;
+        return true;
+      });
+
+      // Sort by current sort key
+      var sortKey = draftSort.key;
+      var sortDir = draftSort.dir;
+      available.sort(function(a, b) {
+        var va = a[sortKey];
+        var vb = b[sortKey];
+        if (typeof va === 'string') {
+          va = va.toLowerCase();
+          vb = (vb || '').toLowerCase();
+          if (va < vb) return sortDir === 'asc' ? -1 : 1;
+          if (va > vb) return sortDir === 'asc' ? 1 : -1;
+          return 0;
+        }
+        return sortDir === 'asc' ? va - vb : vb - va;
+      });
+
+      // Cap at 50 rows for performance
+      available.slice(0, 50).forEach(function(p) {
+        var tr = document.createElement('tr');
+        tr.className = 'available-row border-b border-slate-50';
+        var posBg = posColor(p.position);
+        tr.innerHTML =
+          '<td class="py-1.5 px-2" style="color:#64748b;">' + p.adp_rank + '</td>' +
+          '<td class="py-1.5 px-2 font-medium" style="color:#0f172a;">' + p.player_name + '</td>' +
+          '<td class="py-1.5 px-2"><span class="pick-pos" style="background:' + posBg + ';">' + p.position + '</span></td>' +
+          '<td class="py-1.5 px-2" style="color:#64748b;">' + p.team + '</td>' +
+          '<td class="py-1.5 px-2 font-medium" style="color:#0f172a;">' + fmt(p.fppg, 1) + '</td>' +
+          '<td class="py-1.5 px-2"><button class="text-xs font-bold text-accent hover:text-accent/80" data-draft-id="' + p.id + '">Draft</button></td>';
+        tr.addEventListener('click', function() {
+          userSelectPlayer(p.id);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    function userSelectPlayer(playerId) {
+      var player = null;
+      for (var i = 0; i < draftState.available.length; i++) {
+        if (draftState.available[i].id === playerId) {
+          player = draftState.available[i];
+          break;
+        }
+      }
+      if (!player) return;
+
+      var teamIdx = getTeamIndexForPick(draftState.currentPick);
+      var round = Math.floor(draftState.currentPick / draftState.totalTeams) + 1;
+
+      executePick(teamIdx, player, round);
+
+      // Hide pick panel
+      document.getElementById('user-pick-panel').classList.add('hidden');
+      draftState.paused = false;
+
+      advanceDraft();
+    }
+
+    function executePick(teamIdx, player, round) {
+      var team = draftState.teams[teamIdx];
+      team.picks.push({ player: player, round: round, pickNum: draftState.currentPick + 1 });
+      team.roster[player.position].push(player);
+
+      // Remove from available
+      draftState.available = draftState.available.filter(function(p) { return p.id !== player.id; });
+
+      // Update board cell
+      updateDraftBoardCell(round, teamIdx, player);
+      updateDraftLog(team, player, round);
+      if (team.isUser) {
+        updateMyRoster(team);
+      }
+
+      draftState.currentPick++;
+    }
+
+    function updateDraftBoardCell(round, teamIdx, player) {
+      var cell = document.getElementById('dc-' + round + '-' + teamIdx);
+      if (!cell) return;
+      var posBg = posColor(player.position);
+      var lastName = player.player_name.split(' ').pop();
+      // DEF: use team abbreviation instead of long name
+      if (player.position === 'DEF') lastName = player.team;
+      cell.innerHTML = '<span class="pick-pos" style="background:' + posBg + ';">' + player.position + '</span>' +
+        '<span class="pick-name">' + lastName + '</span>' +
+        '<span style="font-size:0.5rem;color:#94a3b8;">' + player.team + '</span>';
+    }
+
+    function updateDraftLog(team, player, round) {
+      var log = document.getElementById('draft-log');
+      var entry = document.createElement('div');
+      entry.className = 'draft-log-entry';
+      var posBg = posColor(player.position);
+      var nameStyle = team.isUser ? 'font-weight:700;color:#16a34a;' : 'color:#0f172a;';
+      var pickNum = draftState.currentPick;
+      entry.innerHTML =
+        '<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">' +
+          '<div class="flex flex-wrap items-center gap-1.5">' +
+            '<span style="color:#94a3b8;">R' + round + ' #' + pickNum + '</span>' +
+            '<span style="' + nameStyle + '">' + team.name + '</span>' +
+            '<span class="pick-pos" style="background:' + posBg + ';">' + player.position + '</span>' +
+            '<span style="color:#0f172a;font-weight:500;">' + player.player_name + '</span>' +
+            '<span style="color:#94a3b8;">' + player.team + '</span>' +
+          '</div>' +
+          '<div class="flex items-center gap-3 text-xs sm:text-sm" style="color:#64748b;">' +
+            '<span>' + fmt(player.fppg, 1) + ' FPPG</span>' +
+            '<span>ADP #' + player.adp_rank + '</span>' +
+          '</div>' +
+        '</div>';
+      log.insertBefore(entry, log.firstChild);
+    }
+
+    function updateMyRoster(team) {
+      var slotOrder = ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'TE', 'FLEX', 'K', 'DEF', 'BE1', 'BE2', 'BE3', 'BE4', 'BE5', 'BE6'];
+      var roster = team.roster;
+
+      // Assign players to slots in order
+      var assigned = {};
+      var flexCandidates = [];
+
+      // Starters first
+      var qbs = roster.QB.slice();
+      if (qbs[0]) assigned['QB'] = qbs[0];
+
+      var rbs = roster.RB.slice();
+      if (rbs[0]) assigned['RB1'] = rbs[0];
+      if (rbs[1]) assigned['RB2'] = rbs[1];
+
+      var wrs = roster.WR.slice();
+      if (wrs[0]) assigned['WR1'] = wrs[0];
+      if (wrs[1]) assigned['WR2'] = wrs[1];
+
+      var tes = roster.TE.slice();
+      if (tes[0]) assigned['TE'] = tes[0];
+
+      var ks = roster.K.slice();
+      if (ks[0]) assigned['K'] = ks[0];
+
+      var defs = roster.DEF.slice();
+      if (defs[0]) assigned['DEF'] = defs[0];
+
+      // FLEX: best remaining RB/WR/TE not in starter slots
+      if (rbs[2]) flexCandidates.push(rbs[2]);
+      if (wrs[2]) flexCandidates.push(wrs[2]);
+      if (tes[1]) flexCandidates.push(tes[1]);
+      flexCandidates.sort(function(a, b) { return b.fppg - a.fppg; });
+      if (flexCandidates[0] && !assigned['FLEX']) assigned['FLEX'] = flexCandidates[0];
+
+      // Bench: everyone else
+      var allPicked = team.picks.map(function(p) { return p.player; });
+      var assignedIds = Object.values(assigned).map(function(p) { return p.id; });
+      var bench = allPicked.filter(function(p) { return assignedIds.indexOf(p.id) === -1; });
+
+      for (var b = 0; b < 6; b++) {
+        if (bench[b]) assigned['BE' + (b + 1)] = bench[b];
+      }
+
+      // Render
+      slotOrder.forEach(function(slot) {
+        var el = document.getElementById('roster-' + slot);
+        if (!el) return;
+        var p = assigned[slot];
+        if (p) {
+          var posBg = posColor(p.position);
+          el.innerHTML = '<span class="pick-pos" style="background:' + posBg + ';margin-right:4px;">' + p.position + '</span>' +
+            '<span style="color:#0f172a;">' + p.player_name + '</span> ' +
+            '<span style="color:#94a3b8;font-size:0.75rem;">' + p.team + '</span>';
+        } else {
+          el.innerHTML = '<span style="color:#94a3b8;">Empty</span>';
+        }
+      });
+    }
+
+    function calculateTeamScore(team) {
+      var roster = team.roster;
+      var starters = [];
+
+      // QB1
+      if (roster.QB[0]) starters.push(roster.QB[0]);
+      // RB1, RB2
+      if (roster.RB[0]) starters.push(roster.RB[0]);
+      if (roster.RB[1]) starters.push(roster.RB[1]);
+      // WR1, WR2
+      if (roster.WR[0]) starters.push(roster.WR[0]);
+      if (roster.WR[1]) starters.push(roster.WR[1]);
+      // TE1
+      if (roster.TE[0]) starters.push(roster.TE[0]);
+      // FLEX: best remaining RB/WR/TE
+      var flexCandidates = [];
+      if (roster.RB[2]) flexCandidates.push(roster.RB[2]);
+      if (roster.WR[2]) flexCandidates.push(roster.WR[2]);
+      if (roster.TE[1]) flexCandidates.push(roster.TE[1]);
+      flexCandidates.sort(function(a, b) { return b.fppg - a.fppg; });
+      if (flexCandidates[0]) starters.push(flexCandidates[0]);
+      // K
+      if (roster.K[0]) starters.push(roster.K[0]);
+      // DEF
+      if (roster.DEF[0]) starters.push(roster.DEF[0]);
+
+      var total = 0;
+      starters.forEach(function(p) { total += p.fppg || 0; });
+      return Math.round(total * 100) / 100;
+    }
+
+    function finishDraft() {
+      draftState.finished = true;
+
+      // Remove current-pick highlight
+      document.querySelectorAll('.draft-cell.current-pick').forEach(function(c) {
+        c.classList.remove('current-pick');
+      });
+
+      // Calculate scores for all teams
+      var standings = draftState.teams.map(function(team) {
+        return { name: team.name, score: calculateTeamScore(team), isUser: team.isUser };
+      });
+      standings.sort(function(a, b) { return b.score - a.score; });
+
+      var userTeam = draftState.teams.find(function(t) { return t.isUser; });
+      var userScore = calculateTeamScore(userTeam);
+      var userRank = 1;
+      standings.forEach(function(s, i) { if (s.isUser) userRank = i + 1; });
+
+      // Draft grade based on rank
+      var grades = ['A+', 'A', 'B+', 'B', 'C+', 'C'];
+      var grade = grades[Math.min(userRank - 1, grades.length - 1)];
+
+      // Show results
+      document.getElementById('mock-draft-active').classList.add('hidden');
+      document.getElementById('mock-draft-results').classList.remove('hidden');
+
+      document.getElementById('result-weekly-score').textContent = fmt(userScore, 1);
+      document.getElementById('result-league-rank').textContent = '#' + userRank;
+      var gradeEl = document.getElementById('result-draft-grade');
+      gradeEl.textContent = grade;
+      if (userRank <= 2) gradeEl.style.color = '#16a34a';
+      else if (userRank <= 4) gradeEl.style.color = '#ca8a04';
+      else gradeEl.style.color = '#dc2626';
+
+      // Final roster table
+      var rosterDiv = document.getElementById('result-roster');
+      var html = '<table class="w-full text-sm"><thead><tr class="text-xs uppercase tracking-wider border-b border-slate-200" style="color:#64748b;">' +
+        '<th class="py-2 px-2 text-left">Slot</th><th class="py-2 px-2 text-left">Player</th><th class="py-2 px-2 text-left">Pos</th><th class="py-2 px-2 text-left">Team</th><th class="py-2 px-2 text-right">FPPG</th><th class="py-2 px-2 text-right">Round</th></tr></thead><tbody>';
+
+      var slotLabels = [
+        { key: 'QB', label: 'QB', idx: 0 },
+        { key: 'RB', label: 'RB1', idx: 0 },
+        { key: 'RB', label: 'RB2', idx: 1 },
+        { key: 'WR', label: 'WR1', idx: 0 },
+        { key: 'WR', label: 'WR2', idx: 1 },
+        { key: 'TE', label: 'TE', idx: 0 },
+        { key: 'K', label: 'K', idx: 0 },
+        { key: 'DEF', label: 'DEF', idx: 0 },
+      ];
+
+      // Add FLEX
+      var flexCands = [];
+      if (userTeam.roster.RB[2]) flexCands.push(userTeam.roster.RB[2]);
+      if (userTeam.roster.WR[2]) flexCands.push(userTeam.roster.WR[2]);
+      if (userTeam.roster.TE[1]) flexCands.push(userTeam.roster.TE[1]);
+      flexCands.sort(function(a, b) { return b.fppg - a.fppg; });
+
+      slotLabels.forEach(function(s) {
+        var p = userTeam.roster[s.key][s.idx];
+        if (!p) return;
+        var pickInfo = userTeam.picks.find(function(pk) { return pk.player.id === p.id; });
+        var rd = pickInfo ? pickInfo.round : '--';
+        html += '<tr class="border-b border-slate-50"><td class="py-1.5 px-2 font-bold text-xs" style="color:#64748b;">' + s.label + '</td>' +
+          '<td class="py-1.5 px-2 font-medium" style="color:#0f172a;">' + p.player_name + '</td>' +
+          '<td class="py-1.5 px-2"><span class="pick-pos" style="background:' + posColor(p.position) + ';">' + p.position + '</span></td>' +
+          '<td class="py-1.5 px-2" style="color:#64748b;">' + p.team + '</td>' +
+          '<td class="py-1.5 px-2 text-right font-medium" style="color:#0f172a;">' + fmt(p.fppg, 1) + '</td>' +
+          '<td class="py-1.5 px-2 text-right" style="color:#64748b;">R' + rd + '</td></tr>';
+      });
+
+      if (flexCands[0]) {
+        var fp = flexCands[0];
+        var fpPick = userTeam.picks.find(function(pk) { return pk.player.id === fp.id; });
+        var fpRd = fpPick ? fpPick.round : '--';
+        html += '<tr class="border-b border-slate-50"><td class="py-1.5 px-2 font-bold text-xs" style="color:#64748b;">FLEX</td>' +
+          '<td class="py-1.5 px-2 font-medium" style="color:#0f172a;">' + fp.player_name + '</td>' +
+          '<td class="py-1.5 px-2"><span class="pick-pos" style="background:' + posColor(fp.position) + ';">' + fp.position + '</span></td>' +
+          '<td class="py-1.5 px-2" style="color:#64748b;">' + fp.team + '</td>' +
+          '<td class="py-1.5 px-2 text-right font-medium" style="color:#0f172a;">' + fmt(fp.fppg, 1) + '</td>' +
+          '<td class="py-1.5 px-2 text-right" style="color:#64748b;">R' + fpRd + '</td></tr>';
+      }
+
+      // Bench
+      var allAssignedIds = [];
+      slotLabels.forEach(function(s) {
+        var p = userTeam.roster[s.key][s.idx];
+        if (p) allAssignedIds.push(p.id);
+      });
+      if (flexCands[0]) allAssignedIds.push(flexCands[0].id);
+
+      var benchPlayers = userTeam.picks.filter(function(pk) {
+        return allAssignedIds.indexOf(pk.player.id) === -1;
+      });
+
+      benchPlayers.forEach(function(pk) {
+        var p = pk.player;
+        html += '<tr class="border-b border-slate-50"><td class="py-1.5 px-2 font-bold text-xs" style="color:#64748b;">BN</td>' +
+          '<td class="py-1.5 px-2 font-medium" style="color:#0f172a;">' + p.player_name + '</td>' +
+          '<td class="py-1.5 px-2"><span class="pick-pos" style="background:' + posColor(p.position) + ';">' + p.position + '</span></td>' +
+          '<td class="py-1.5 px-2" style="color:#64748b;">' + p.team + '</td>' +
+          '<td class="py-1.5 px-2 text-right font-medium" style="color:#0f172a;">' + fmt(p.fppg, 1) + '</td>' +
+          '<td class="py-1.5 px-2 text-right" style="color:#64748b;">R' + pk.round + '</td></tr>';
+      });
+
+      html += '</tbody></table>';
+      rosterDiv.innerHTML = html;
+
+      // Standings table
+      var standingsDiv = document.getElementById('result-standings');
+      var shtml = '<table class="w-full text-sm"><thead><tr class="text-xs uppercase tracking-wider border-b border-slate-200" style="color:#64748b;">' +
+        '<th class="py-2 px-2 text-left">Rank</th><th class="py-2 px-2 text-left">Team</th><th class="py-2 px-2 text-right">Proj. FPPG</th></tr></thead><tbody>';
+      standings.forEach(function(s, i) {
+        var rowStyle = s.isUser ? 'background:#f0fdf4;font-weight:700;' : '';
+        var nameColor = s.isUser ? '#16a34a' : '#0f172a';
+        shtml += '<tr style="' + rowStyle + '" class="border-b border-slate-50">' +
+          '<td class="py-1.5 px-2" style="color:#64748b;">' + (i + 1) + '</td>' +
+          '<td class="py-1.5 px-2" style="color:' + nameColor + ';">' + s.name + '</td>' +
+          '<td class="py-1.5 px-2 text-right" style="color:#0f172a;">' + fmt(s.score, 1) + '</td></tr>';
+      });
+      shtml += '</tbody></table>';
+      standingsDiv.innerHTML = shtml;
+
+      // Draft Again button
+      document.getElementById('draft-again-btn').addEventListener('click', function() {
+        resetDraft();
+      });
+    }
+
+    function resetDraft() {
+      draftState = null;
+
+      document.getElementById('mock-draft-results').classList.add('hidden');
+      document.getElementById('mock-draft-active').classList.add('hidden');
+      document.getElementById('mock-draft-setup').classList.remove('hidden');
+
+      // Reset position selector
+      document.querySelectorAll('.pick-slot-btn').forEach(function(b) { b.classList.remove('selected'); });
+      document.getElementById('start-draft-btn').disabled = true;
+      document.getElementById('draft-pick-preview').innerHTML =
+        '<span style="color:#64748b;">Choose a position from 1 to 6 to see your pick order.</span>';
+
+      // Re-render with fresh data
+      renderMockDraft(DATA);
+    }
+
+    // -- Tab switching --
+    function setupTabs() {
+      var tabContainer = document.getElementById('position-tabs');
+      tabContainer.addEventListener('click', function(e) {
+        var btn = e.target.closest('.tab-btn');
+        if (!btn) return;
+
+        var tab = btn.getAttribute('data-tab');
+
+        // Update active button
+        tabContainer.querySelectorAll('.tab-btn').forEach(function(b) {
+          b.classList.remove('active', 'bg-accent', 'text-base');
+          b.classList.add('bg-surface', 'text-black');
+        });
+        btn.classList.add('active', 'bg-accent', 'text-base');
+        btn.classList.remove('bg-surface', 'text-black');
+
+        // Show/hide panels
+        document.querySelectorAll('.tab-content').forEach(function(panel) {
+          panel.classList.add('hidden');
+        });
+        var target = document.getElementById('tab-' + tab);
+        if (target) target.classList.remove('hidden');
+      });
+    }
+
+    // Sleeper tab handling
+    document.querySelectorAll('.sleeper-tab').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var pos = this.getAttribute('data-sleeper-pos');
+        document.querySelectorAll('.sleeper-tab').forEach(function(b) {
+          b.style.background = '#fff';
+          b.style.color = '#000';
+          b.style.borderColor = '#e2e8f0';
+        });
+        this.style.background = '#0f172a';
+        this.style.color = '#fff';
+        this.style.borderColor = '#0f172a';
+        document.querySelectorAll('.sleeper-content').forEach(function(c) { c.classList.add('hidden'); });
+        var target = document.getElementById('sleeper-' + pos);
+        if (target) target.classList.remove('hidden');
+      });
+    });
+
+    // Auction tab handling
+    document.querySelectorAll('.auction-tab').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var pos = this.getAttribute('data-auction-pos');
+        document.querySelectorAll('.auction-tab').forEach(function(b) {
+          b.style.background = '#fff';
+          b.style.color = '#000';
+          b.style.borderColor = '#e2e8f0';
+        });
+        this.style.background = '#0f172a';
+        this.style.color = '#fff';
+        this.style.borderColor = '#0f172a';
+        document.querySelectorAll('.auction-content').forEach(function(c) { c.classList.add('hidden'); });
+        var target = document.getElementById('auction-' + pos);
+        if (target) target.classList.remove('hidden');
+      });
+    });
+
+    // -- Show More button --
+    function setupShowMore() {
+      var btn = document.getElementById('show-more-btn');
+      if (!btn) return;
+
+      btn.addEventListener('click', function() {
+        showingAllRows = !showingAllRows;
+        var extraRows = document.querySelectorAll('.extra-row');
+        extraRows.forEach(function(row) {
+          if (showingAllRows) {
+            row.classList.remove('hidden');
+          } else {
+            row.classList.add('hidden');
+          }
+        });
+        btn.textContent = showingAllRows ? 'Show Less' : 'Show More';
+      });
+    }
+
+    // -- IntersectionObserver for active nav --
+    function setupIntersectionObserver() {
+      var sections = document.querySelectorAll('section[id]');
+      var navLinks = document.querySelectorAll('.nav-link');
+
+      var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+            var id = entry.target.getAttribute('id');
+            navLinks.forEach(function(link) {
+              if (link.getAttribute('data-section') === id) {
+                link.classList.add('active');
+              } else {
+                link.classList.remove('active');
+              }
+            });
+          }
+        });
+      }, {
+        rootMargin: '-20% 0px -60% 0px',
+        threshold: 0
+      });
+
+      sections.forEach(function(section) {
+        observer.observe(section);
+      });
+    }
+
+    // -- Helpers --
+    function capitalize(str) {
+      if (!str) return '';
+      return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+  </script>
+</body>
+</html>
