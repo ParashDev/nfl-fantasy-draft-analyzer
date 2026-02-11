@@ -1205,40 +1205,13 @@
         <h2 class="font-serif text-3xl md:text-4xl font-bold text-black mb-10 text-center">The Takeaway</h2>
 
         <!-- Narrative -->
-        <div class="max-w-3xl mb-12">
+        <div class="mb-12">
           <p id="takeaway-narrative" class="text-black leading-relaxed text-lg mb-8"></p>
           <div id="takeaway-insights" class="space-y-4 mb-12">
             <!-- Insight bullets injected by JS -->
           </div>
         </div>
 
-        <!-- What I Would Build Next -->
-        <div class="mb-12">
-          <h3 class="font-serif text-xl font-bold mb-6">What I Would Build Next</h3>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="bg-white shadow-sm border border-slate-200 rounded-lg p-5">
-              <div class="w-8 h-8 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center mb-3">
-                <svg class="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
-              </div>
-              <h4 class="font-bold text-sm mb-1">Trade Value Calculator</h4>
-              <p class="text-black text-xs leading-relaxed">Mid-season trade value model based on remaining schedule strength, recent performance trends, and positional scarcity.</p>
-            </div>
-            <div class="bg-white shadow-sm border border-slate-200 rounded-lg p-5">
-              <div class="w-8 h-8 rounded-lg bg-warn/10 border border-warn/20 flex items-center justify-center mb-3">
-                <svg class="w-4 h-4 text-warn" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-              </div>
-              <h4 class="font-bold text-sm mb-1">Injury Risk Model</h4>
-              <p class="text-black text-xs leading-relaxed">Historical injury data combined with workload metrics to flag players with elevated risk before draft day.</p>
-            </div>
-            <div class="bg-white shadow-sm border border-slate-200 rounded-lg p-5">
-              <div class="w-8 h-8 rounded-lg bg-gold/10 border border-gold/20 flex items-center justify-center mb-3">
-                <svg class="w-4 h-4 text-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-              </div>
-              <h4 class="font-bold text-sm mb-1">Schedule Strength Analyzer</h4>
-              <p class="text-black text-xs leading-relaxed">Remaining-schedule difficulty model that scores each team's upcoming matchups by defensive rankings, helping target players with soft playoff schedules.</p>
-            </div>
-          </div>
-        </div>
 
         <!-- Tools Used -->
         <div class="mb-12">
@@ -2623,11 +2596,11 @@
       // 2. Biggest value pick
       if (d.adp_comparison && d.adp_comparison.steals && d.adp_comparison.steals.length > 0) {
         var bestSteal = d.adp_comparison.steals[0];
-        insights.push('Biggest steal: <span class="text-black font-bold">' + bestSteal.player_name + '</span> (' + bestSteal.position + ') -- ranked #' + bestSteal.rank + ' but has an ADP of Round ' + bestSteal.adp_round + '. A ' + (bestSteal.round_diff || bestSteal.diff) + '-round value gap.');
+        insights.push('Biggest steal: <span class="text-black font-bold">' + bestSteal.player_name + '</span> (' + bestSteal.position + ') -- performs like a Round ' + bestSteal.stat_round + ' pick but has an ADP of Round ' + bestSteal.adp_round + '. A ' + bestSteal.round_diff + '-round value gap.');
       } else if (topOverall.length > 5) {
         // Without ADP data, highlight a mid-round value
         var valuePick = topOverall[4]; // 5th overall as a value proxy
-        insights.push('Value target: <span class="text-black font-bold">' + valuePick.player_name + '</span> (' + valuePick.position + ') -- ranked #' + valuePick.rank + ' overall with ' + fmt(valuePick.fppg, 1) + ' FPPG. Often available in later rounds.');
+        insights.push('Value target: <span class="text-black font-bold">' + valuePick.player_name + '</span> (' + valuePick.position + ') -- ' + fmt(valuePick.fppg, 1) + ' FPPG. Often available in later rounds.');
       }
 
       // 3. Most consistent player
