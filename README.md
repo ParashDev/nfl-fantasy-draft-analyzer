@@ -81,8 +81,8 @@ python scripts/04_export_powerbi.py
 ```
 
 Exports a star schema data model:
-- **Fact tables:** Players (77 ranked), auction values (50), ADP comparison (20), sleepers (60), draft pool (252), weekly trends (18 weeks)
-- **Dimension tables:** Positions (with colors and scarcity tiers), scoring formats (3), season metadata
+- **Fact tables:** Players, auction values, ADP comparison, sleepers, draft pool, weekly trends
+- **Dimension tables:** Positions (with colors and scarcity tiers), scoring formats, season metadata
 
 Import the CSVs into Power BI Desktop and connect via the suggested relationships printed by the script.
 
