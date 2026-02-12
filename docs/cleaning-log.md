@@ -6,7 +6,7 @@ Every data cleaning choice documented with reasoning.
 
 ## Decision 01: Column Selection from Seasonal Stats
 
-**What:** Dropped ~30 columns from nfl_data_py seasonal output, keeping 19 columns relevant to fantasy scoring.
+**What:** Dropped ~30 columns from nfl_data_py seasonal output, keeping 20 columns relevant to fantasy scoring.
 **Why:** The raw seasonal data includes advanced metrics (EPA, CPOE, air yards share) that are valuable for deep analysis but unnecessary for fantasy point calculations. Keeping only scoring-relevant stats reduces noise and simplifies the transform step.
 **Impact:** ~30 columns dropped per player row. Zero data loss for fantasy calculations.
 
@@ -14,8 +14,8 @@ Every data cleaning choice documented with reasoning.
 
 ## Decision 02: Position Filtering
 
-**What:** Filtered player data to only QB, RB, WR, TE positions.
-**Why:** Fantasy football rosters focus on these four skill positions for point-scoring analysis. Kicker and team defense use fundamentally different stat categories and are handled separately. Offensive linemen, punters, and long snappers have no fantasy relevance.
+**What:** Filtered player data to only QB, RB, WR, TE positions for the main stats pipeline.
+**Why:** Fantasy football rosters focus on these four skill positions for point-scoring analysis. Kicker and team defense use fundamentally different stat categories and are extracted separately from play-by-play data. Offensive linemen, punters, and long snappers have no fantasy relevance.
 **Impact:** Approximately 60% of raw player rows dropped (most NFL players are non-skill positions).
 
 ---
@@ -24,7 +24,7 @@ Every data cleaning choice documented with reasoning.
 
 **What:** Excluded players with fewer than 8 games played from rankings.
 **Why:** A player who scores 40 points in 2 games appears elite by per-game average but provides no draft reliability. The 8-game threshold (roughly half a season) ensures enough sample size for meaningful consistency analysis while still including players who missed time due to bye weeks or minor injuries.
-**Impact:** Approximately 30-40% of skill position players filtered out. These are typically backups, practice squad callups, and injured-reserve players.
+**Impact:** Approximately 40% of skill position players filtered out (559 to 329 qualified). These are typically backups, practice squad callups, and injured-reserve players.
 
 ---
 
@@ -47,7 +47,7 @@ Every data cleaning choice documented with reasoning.
 ## Decision 06: Weekly Data Regular Season Filter
 
 **What:** Filtered weekly stats to weeks 1-18 only.
-**Why:** Fantasy football regular seasons run weeks 1-17 or 1-18 (depending on league). Playoff performance is irrelevant for draft rankings since fantasy championships are decided before NFL playoffs. Including postseason stats would inflate totals for players on playoff teams.
+**Why:** Fantasy football regular seasons run weeks 1-18. Playoff performance is irrelevant for draft rankings since fantasy championships are decided before NFL playoffs. Including postseason stats would inflate totals for players on playoff teams.
 **Impact:** Playoff week rows dropped for all players on teams that made the postseason.
 
 ---
@@ -100,14 +100,39 @@ Every data cleaning choice documented with reasoning.
 
 ---
 
+## Decision 13: Kicker Stats from Play-by-Play
+
+**What:** Extracted kicker statistics (field goals made/missed by distance, PATs, long FG) from play-by-play data rather than using the seasonal stats endpoint.
+**Why:** nflverse seasonal stats only cover QB, RB, WR, TE. Kicker stats must be derived from individual plays -- field goal attempts and extra point attempts. Play-by-play data provides exact distances, makes/misses, and player attribution needed for accurate kicker fantasy scoring.
+**Impact:** 56 kickers extracted with field goal breakdown, PAT stats, and calculated fantasy points. Bonus points applied for 50+ yard field goals.
+
+---
+
+## Decision 14: Team Defense Stats from Play-by-Play
+
+**What:** Extracted team defense statistics (points allowed, sacks, interceptions, fumble recoveries, defensive TDs, safeties) from play-by-play data.
+**Why:** nflverse does not provide a dedicated team defense fantasy endpoint. Defensive fantasy scoring requires aggregating opponent scoring and turnover/sack events from play-by-play. Each team's defense is treated as a single "player" for fantasy purposes.
+**Impact:** All 32 NFL team defenses extracted with standardized fantasy point calculations based on points allowed tiers and turnover/scoring events.
+
+---
+
+## Decision 15: Auto Season Detection Fallback Chain
+
+**What:** config.py queries the Sleeper API for the current NFL phase, then verifies nflverse data availability. If the target season data is not yet published, it falls back to the most recent available season (up to 3 years back).
+**Why:** nflverse typically publishes finalized season data 2-3 weeks after the Super Bowl. During this gap, the Sleeper API already reports the next season. Without the fallback, the pipeline would fail with 404 errors. The chain ensures the pipeline always produces output.
+**Impact:** Seamless season transitions with no manual configuration. The pipeline self-corrects when data becomes available.
+
+---
+
 ## Summary
 
 | Metric | Value |
 |---|---|
-| Input rows (seasonal) | ~2000 (all positions) |
-| Output rows (seasonal) | ~250 (qualified skill position players) |
-| Rows dropped | ~1750 |
+| Input rows (seasonal) | ~600 (all skill positions) |
+| Output rows (qualified) | ~330 (8+ games played) |
+| Rows dropped | ~270 |
 | Input columns (seasonal) | ~50 |
-| Output columns (seasonal) | 19 |
-| Columns dropped | ~31 |
-| Columns added (derived) | 0 (derived columns added in 02_transform.py) |
+| Output columns (seasonal) | 20 |
+| Columns dropped | ~30 |
+| Additional datasets | kicker (56 rows), defense (32 rows), weekly (5,200+ rows) |
+| Enrichment | ADP data (450+ players from Sleeper API, optional) |
