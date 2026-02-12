@@ -2,6 +2,7 @@
 data/raw/
 data/cleaned/
 data/dashboard_data.json
+data/powerbi/
 
 # Python
 __pycache__/

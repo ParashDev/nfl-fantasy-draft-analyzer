@@ -71,6 +71,21 @@ python -m http.server 8000
 # Open http://localhost:8000
 ```
 
+## Power BI Integration
+
+The pipeline includes a Power BI export script that generates flat, denormalized CSVs ready for import into Power BI Desktop:
+
+```bash
+python scripts/04_export_powerbi.py
+# Outputs 9 CSVs to data/powerbi/
+```
+
+Exports a star schema data model:
+- **Fact tables:** Players (77 ranked), auction values (50), ADP comparison (20), sleepers (60), draft pool (252), weekly trends (18 weeks)
+- **Dimension tables:** Positions (with colors and scarcity tiers), scoring formats (3), season metadata
+
+Import the CSVs into Power BI Desktop and connect via the suggested relationships printed by the script.
+
 ## Automated Deployment
 
 The GitHub Actions workflow handles everything automatically:
