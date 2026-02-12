@@ -40,13 +40,16 @@ Season detection is fully automatic -- the pipeline queries the Sleeper API to d
                     | dashboard_data.  |
                     | json             |
                     +--------+---------+
-                             |
-                    +--------v---------+
-                    |   index.html     |
-                    | (static dashboard|
-                    |  Chart.js +      |
-                    |  Tailwind)       |
-                    +------------------+
+                          |         |
+               +----------+    +----v-----------------+
+               |               | 04_export_powerbi.py |
+    +----------v---------+     | (optional)           |
+    |   index.html       |     +----+-----------------+
+    | (static dashboard  |          |
+    |  Chart.js +        |     +----v-----------------+
+    |  Tailwind)         |     | data/powerbi/        |
+    +--------------------+     | 9 CSVs (star schema) |
+                               +----------------------+
 ```
 
 ## Scripts
@@ -93,6 +96,14 @@ Season detection is fully automatic -- the pipeline queries the Sleeper API to d
 - **Runtime:** ~5-15 seconds (large JSON download)
 - **Key decisions:** Uses Sleeper search_rank as ADP proxy, estimates draft round from rank position, matches player names across sources. This script is optional -- the dashboard works without it.
 
+### 04_export_powerbi.py
+- **Reads:** data/dashboard_data.json (must run 02_transform.py first)
+- **Produces:** 9 CSVs in data/powerbi/ (star schema model for Power BI Desktop)
+- **Runtime:** <1 second
+- **Fact tables:** Players with stats across 3 scoring formats, auction values with VOR, ADP steals/reaches, sleeper picks, draft pool, weekly positional trends
+- **Dimension tables:** Positions (colors, scarcity tiers), scoring format definitions, season metadata
+- **Key decisions:** Denormalizes the nested JSON into flat tables with consistent foreign keys. Uses a star schema so Power BI can auto-detect relationships. This script is optional -- the web dashboard does not depend on it.
+
 ## Automated Deployment
 
 The GitHub Actions workflow (`.github/workflows/update-data.yml`) runs the full pipeline and deploys to GitHub Pages:
@@ -121,10 +132,11 @@ This is not about ignorance of these tools. It is about appropriate tool selecti
 Delete all generated data and rebuild from scratch:
 
 ```bash
-rm -rf data/raw data/cleaned data/dashboard_data.json
+rm -rf data/raw data/cleaned data/dashboard_data.json data/powerbi
 python scripts/01_clean.py
-python scripts/03_fetch_adp.py    # optional
+python scripts/03_fetch_adp.py      # optional enrichment
 python scripts/02_transform.py
+python scripts/04_export_powerbi.py  # optional Power BI export
 python -m http.server 8000
 ```
 
