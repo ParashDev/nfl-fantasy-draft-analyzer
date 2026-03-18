@@ -37,14 +37,39 @@ def _nflverse_has_season(year):
         return False
 
 
+def _espn_has_season(year):
+    """Check if ESPN has finalized game data for a given season.
+    Hits the scoreboard for week 1 and looks for completed games."""
+    try:
+        url = (
+            f"https://site.api.espn.com/apis/site/v2/sports/football/nfl/"
+            f"scoreboard?dates={year}&seasontype=2&week=1"
+        )
+        req = urllib.request.Request(url, headers={"User-Agent": "nfl-fantasy-draft-analyzer"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+            events = data.get("events", [])
+            if not events:
+                return False
+            for event in events:
+                status = event.get("status", {}).get("type", {}).get("name", "")
+                if status == "STATUS_FINAL":
+                    return True
+            return False
+    except Exception:
+        return False
+
+
 def _detect_season():
-    """Auto-detect season year and mode from Sleeper + nflverse."""
+    """Auto-detect season year, mode, and data source from Sleeper + nflverse + ESPN."""
 
     # Environment variable overrides (for CI or manual control)
     env_year = os.environ.get("NFL_SEASON_YEAR")
     env_mode = os.environ.get("NFL_MODE")
+    env_source = os.environ.get("NFL_DATA_SOURCE")
     if env_year and env_mode:
-        return int(env_year), env_mode
+        source = env_source if env_source in ("nflverse", "espn") else "nflverse"
+        return int(env_year), env_mode, source
 
     # Step 1: Ask Sleeper what phase the NFL is in
     try:
@@ -61,11 +86,12 @@ def _detect_season():
 
         # Regular season or playoffs: use current season in live mode
         if season_type in ("regular", "post"):
-            return season, "live"
-
-        # Offseason or preseason: target the completed season
-        target = previous
-        mode = "static"
+            target = season
+            mode = "live"
+        else:
+            # Offseason or preseason: target the completed season
+            target = previous
+            mode = "static"
 
     except Exception:
         # Sleeper unreachable -- guess based on current date
@@ -74,18 +100,28 @@ def _detect_season():
         target = today.year if today.month >= 9 else today.year - 1
         mode = "static"
 
-    # Step 2: Verify nflverse has the target season, fall back if not
-    for year in range(target, target - 3, -1):
+    # Step 2: Check if nflverse has the TARGET season specifically
+    if _nflverse_has_season(target):
+        return target, mode, "nflverse"
+
+    # Step 3: nflverse doesn't have target season -- try ESPN for target
+    # ESPN is preferred over falling back to an older nflverse season
+    # because it gives us CURRENT season data instead of stale data
+    if _espn_has_season(target):
+        print(f"  [config] nflverse {target} not published yet, using ESPN fallback")
+        return target, mode, "espn"
+
+    # Step 4: Neither source has target -- fall back to older nflverse seasons
+    for year in range(target - 1, target - 3, -1):
         if _nflverse_has_season(year):
-            if year != target:
-                print(f"  [config] nflverse {target} not published yet, using {year}")
-            return year, mode
+            print(f"  [config] {target} unavailable on nflverse and ESPN, using {year}")
+            return year, mode, "nflverse"
 
     # Everything failed -- safe fallback
-    return 2024, "static"
+    return 2024, "static", "nflverse"
 
 
-SEASON_YEAR, MODE = _detect_season()
+SEASON_YEAR, MODE, DATA_SOURCE = _detect_season()
 REGULAR_SEASON_WEEKS = 18
 
 # -- DATA SOURCES -------------------------------------------

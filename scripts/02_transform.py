@@ -16,9 +16,9 @@ import sys
 import math
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config import (SEASON_YEAR, REGULAR_SEASON_WEEKS, MODE, SCORING, DEFAULT_SCORING,
-                    DRAFT_FORMAT, FANTASY_POSITIONS, TOP_PICK_COUNT, ADDITIONAL_PICKS,
-                    MIN_GAMES_PLAYED, POSITION_SCARCITY, POSITION_COLORS,
+from config import (SEASON_YEAR, REGULAR_SEASON_WEEKS, MODE, DATA_SOURCE, SCORING,
+                    DEFAULT_SCORING, DRAFT_FORMAT, FANTASY_POSITIONS, TOP_PICK_COUNT,
+                    ADDITIONAL_PICKS, MIN_GAMES_PLAYED, POSITION_SCARCITY, POSITION_COLORS,
                     AUCTION_BUDGET, AUCTION_BENCH_RESERVE, AUCTION_MIN_BID,
                     AUCTION_REPLACEMENT_LEVEL)
 
@@ -1235,6 +1235,7 @@ def main():
         "weeks_expected": REGULAR_SEASON_WEEKS,
         "is_complete": MODE == "static",
         "mode": MODE,
+        "data_source": DATA_SOURCE,
         "last_updated": pd.Timestamp.now().strftime("%Y-%m-%d"),
         "total_players": len(seasonal_data),
     }

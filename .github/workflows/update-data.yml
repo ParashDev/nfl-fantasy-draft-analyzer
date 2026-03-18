@@ -29,6 +29,11 @@ on:
         required: false
         default: ""
         type: string
+      override_data_source:
+        description: "Force a data source (nflverse or espn). Leave blank for auto-detect."
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -49,6 +54,7 @@ jobs:
     env:
       NFL_SEASON_YEAR: ${{ github.event.inputs.override_season }}
       NFL_MODE: ${{ github.event.inputs.override_mode }}
+      NFL_DATA_SOURCE: ${{ github.event.inputs.override_data_source }}
 
     steps:
       - name: Checkout repository
@@ -67,9 +73,10 @@ jobs:
       - name: Detect season
         run: |
           python -c "
-          from scripts.config import SEASON_YEAR, MODE
+          from scripts.config import SEASON_YEAR, MODE, DATA_SOURCE
           print(f'Season: {SEASON_YEAR}')
           print(f'Mode: {MODE}')
+          print(f'Source: {DATA_SOURCE}')
           "
 
       # Cache raw downloads so completed seasons don't re-download

@@ -69,12 +69,14 @@
     /* Circular progress indicator */
     .circular-progress {
       position: relative;
-      width: 80px;
-      height: 80px;
+      width: 100px;
+      height: 100px;
     }
 
     .circular-progress svg {
       transform: rotate(-90deg);
+      width: 100%;
+      height: 100%;
     }
 
     .circular-progress .progress-ring {
@@ -88,7 +90,7 @@
       align-items: center;
       justify-content: center;
       font-weight: 700;
-      font-size: 1rem;
+      font-size: 1.125rem;
     }
 
     /* Terminal styling */
@@ -696,8 +698,8 @@
             <p id="kpi-sources" class="text-3xl font-bold text-black">--</p>
           </div>
           <div class="bg-white shadow-sm border border-slate-200 rounded-lg p-5">
-            <p class="text-black text-sm mb-1">Games Tracked</p>
-            <p id="kpi-games" class="text-3xl font-bold text-black">--</p>
+            <p class="text-black text-sm mb-1">Positions Covered</p>
+            <p id="kpi-positions" class="text-3xl font-bold text-black">--</p>
           </div>
         </div>
 
@@ -746,8 +748,8 @@
                 <svg fill="none" stroke="#0f172a" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
               </div>
               <p class="pipeline-node-label">Source</p>
-              <p class="pipeline-node-value">nflverse</p>
-              <p class="pipeline-node-sub">Stats + Play-by-Play</p>
+              <p class="pipeline-node-value" id="pipeline-source-name">nflverse</p>
+              <p class="pipeline-node-sub" id="pipeline-source-sub">Stats + Play-by-Play</p>
             </div>
             <div class="pipeline-node">
               <div class="pipeline-icon-ring" style="background:#f8fafc; border: 2px solid #cbd5e1;">
@@ -1224,7 +1226,7 @@
         <!-- Source Attribution -->
         <div class="bg-surface border border-slate-200 rounded-lg p-5">
           <p class="text-black text-sm leading-relaxed">
-            Data sourced from <span class="text-black">nflverse</span> via the <span class="text-black">nfl_data_py</span> Python library.
+            <span id="source-attribution">Data sourced from <span class="text-black">nflverse</span> via the <span class="text-black">nfl_data_py</span> Python library.</span>
             <span id="adp-attribution" class="hidden">ADP estimates sourced from the <span class="text-black">Sleeper API</span>.</span>
             All player statistics reflect official NFL game logs. Fantasy scoring calculated using standard, half-PPR, and full-PPR formats.
           </p>
@@ -1417,8 +1419,25 @@
           'Data as of Week ' + status.weeks_available + '/' + status.weeks_expected;
       }
 
+      // Data source detection -- ESPN fallback or nflverse primary
+      var dataSource = (status && status.data_source) || 'nflverse';
+      var isEspn = dataSource === 'espn';
+
+      // Update pipeline source node
+      if (isEspn) {
+        var srcName = document.getElementById('pipeline-source-name');
+        var srcSub = document.getElementById('pipeline-source-sub');
+        if (srcName) srcName.textContent = 'ESPN API';
+        if (srcSub) srcSub.textContent = 'Fallback Source';
+
+        var srcAttr = document.getElementById('source-attribution');
+        if (srcAttr) srcAttr.innerHTML = 'Data sourced from <span class="text-black">ESPN API</span> (nflverse fallback).';
+      }
+
       // Tech pills
-      var pills = ['Python', 'nfl_data_py', 'Pandas', 'Chart.js', 'Tailwind CSS'];
+      var pills = isEspn
+        ? ['Python', 'ESPN API', 'Pandas', 'Chart.js', 'Tailwind CSS']
+        : ['Python', 'nfl_data_py', 'Pandas', 'Chart.js', 'Tailwind CSS'];
       var hasAdp = d.adp_comparison && (d.adp_comparison.steals || d.adp_comparison.reaches);
       if (hasAdp) pills.push('Sleeper API');
 
@@ -1437,7 +1456,7 @@
       var heroPositions = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'];
       var qualifiedCount = safeGet(d, 'kpi.qualified_players', 0);
       var weekCount = status.weeks_available || 18;
-      var gamesTracked = safeGet(d, 'kpi.season_games', 0);
+      var positionsCovered = safeGet(d, 'kpi.positions_covered', 0);
 
       var html = '<div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">';
 
@@ -1452,8 +1471,8 @@
           '<p class="text-xs" style="color:#000;">Weeks</p>' +
         '</div>' +
         '<div class="p-4 text-center">' +
-          '<p class="text-2xl font-bold" style="color:#16a34a;">' + fmt(gamesTracked) + '</p>' +
-          '<p class="text-xs" style="color:#000;">Games</p>' +
+          '<p class="text-2xl font-bold" style="color:#16a34a;">' + positionsCovered + '</p>' +
+          '<p class="text-xs" style="color:#000;">Positions</p>' +
         '</div>' +
       '</div>';
 
@@ -1572,7 +1591,7 @@
     function renderRawData(d, status) {
       document.getElementById('kpi-players').textContent = fmt(safeGet(d, 'kpi.total_players_analyzed', '--'));
       document.getElementById('kpi-sources').textContent = fmt(safeGet(d, 'kpi.data_sources', '--'));
-      document.getElementById('kpi-games').textContent = fmt(safeGet(d, 'kpi.season_games', '--'));
+      document.getElementById('kpi-positions').textContent = fmt(safeGet(d, 'kpi.positions_covered', '--'));
 
       // Draft format summary
       var df = d.draft_format || {};
@@ -2628,7 +2647,10 @@
       });
 
       // Tools grid
-      var tools = ['Python', 'Pandas', 'nfl_data_py', 'Chart.js', 'Tailwind CSS'];
+      var takeawaySource = (status && status.data_source) === 'espn';
+      var tools = takeawaySource
+        ? ['Python', 'Pandas', 'ESPN API', 'Chart.js', 'Tailwind CSS']
+        : ['Python', 'Pandas', 'nfl_data_py', 'Chart.js', 'Tailwind CSS'];
       var hasAdp = d.adp_comparison && (d.adp_comparison.steals || d.adp_comparison.reaches);
       if (hasAdp) tools.push('Sleeper API');
 

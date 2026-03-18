@@ -19,6 +19,7 @@ from config import (
     SEASON_YEAR,
     REGULAR_SEASON_WEEKS,
     MODE,
+    DATA_SOURCE,
     ACTIVE_DATASETS,
     TEAM_DISPLAY_NAMES,
     MIN_GAMES_PLAYED,
@@ -30,11 +31,21 @@ CLEAN_DIR = os.path.join(BASE_DIR, "data", "cleaned")
 os.makedirs(RAW_DIR, exist_ok=True)
 os.makedirs(CLEAN_DIR, exist_ok=True)
 
-try:
-    import nfl_data_py as nfl
-except ImportError:
-    print("ERROR: nfl_data_py is required. Run: pip install nfl_data_py")
-    sys.exit(1)
+# nfl_data_py is loaded lazily -- only needed for the nflverse path.
+# When using ESPN fallback, it is not required.
+nfl = None
+
+def _load_nfl_data_py():
+    """Import nfl_data_py on demand. Only needed for nflverse data source."""
+    global nfl
+    if nfl is not None:
+        return
+    try:
+        import nfl_data_py as _nfl
+        nfl = _nfl
+    except ImportError:
+        print("ERROR: nfl_data_py is required for nflverse source. Run: pip install nfl_data_py")
+        sys.exit(1)
 
 # -- FANTASY-RELEVANT POSITIONS --------------------------------
 # Only these positions produce meaningful fantasy scoring.
@@ -447,7 +458,7 @@ def extract_kicker_defense_stats(year):
     """Extract kicker and team defense fantasy stats from play-by-play data.
     PBP is the only nflverse source that includes FG, PAT, and defensive play data."""
     try:
-        import nfl_data_py as nfl
+        _load_nfl_data_py()
         print(f"  Downloading play-by-play data for {year}...")
         pbp = nfl.import_pbp_data([year])
     except Exception as e:
@@ -665,8 +676,43 @@ def _build_defense_stats(pbp):
 def main():
     print("=" * 60)
     print(f"NFL Fantasy Draft Analyzer - Data Cleaning")
-    print(f"Season: {SEASON_YEAR} | Mode: {MODE}")
+    print(f"Season: {SEASON_YEAR} | Mode: {MODE} | Source: {DATA_SOURCE}")
     print("=" * 60)
+
+    # -- ESPN FALLBACK PATH -----------------------------------
+    # When nflverse data is unavailable, ESPN provides equivalent
+    # stats. The ESPN module produces the exact same CSV schemas
+    # so downstream scripts (02_transform, etc.) need no changes.
+    if DATA_SOURCE == "espn":
+        print("\n  ** Using ESPN as data source (nflverse unavailable) **\n")
+        from espn_fallback import fetch_espn_season
+
+        espn_data = fetch_espn_season(SEASON_YEAR)
+
+        print("\n[Saving] Writing cleaned files from ESPN data...")
+        file_map = {
+            "seasonal": ("player_stats.csv", "player_stats"),
+            "weekly": ("weekly_stats.csv", "weekly_stats"),
+            "roster": ("roster_info.csv", "roster_info"),
+            "kicker": ("kicker_stats.csv", "kicker_stats"),
+            "defense": ("defense_stats.csv", "defense_stats"),
+            "weekly_kdef": ("weekly_kdef.csv", "weekly_kdef"),
+        }
+
+        for key, (filename, label) in file_map.items():
+            df = espn_data.get(key)
+            if df is not None and not df.empty:
+                _save_csv(df, os.path.join(CLEAN_DIR, filename), label)
+            else:
+                print(f"  {filename:25s}  -- not generated --")
+
+        print("\n" + "=" * 60)
+        print("Cleaning complete (ESPN source).")
+        print("=" * 60)
+        return
+
+    # -- NFLVERSE PATH (default) ------------------------------
+    _load_nfl_data_py()
 
     # -- STEP 1: Download raw data ----------------------------
     print("\n[Step 1] Downloading data...")

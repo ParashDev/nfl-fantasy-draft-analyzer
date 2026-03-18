@@ -20,17 +20,18 @@ I wanted to build a system that takes the guesswork out of fantasy football draf
 
 ## How It Works
 
-The pipeline auto-detects which season to analyze using two data sources:
+The pipeline auto-detects which season to analyze using multiple data sources with automatic fallback:
 
 1. **Sleeper API** (`/v1/state/nfl`) -- determines what phase the NFL is in (regular season, playoffs, offseason)
-2. **nflverse** -- verifies that season data is actually published and available
+2. **nflverse** -- primary stats source; verifies that season data is actually published
+3. **ESPN API** -- automatic fallback when nflverse hasn't published the target season yet
 
 | NFL Phase | Mode | Behavior |
 |---|---|---|
 | Regular season / Playoffs | `live` | Re-downloads fresh stats every run |
 | Offseason / Preseason | `static` | Caches data locally, no re-downloads |
 
-When nflverse publishes new season data, the pipeline picks it up automatically on the next run.
+**Data source priority:** nflverse (primary) -> ESPN API (fallback) -> cached data. When nflverse hasn't published a completed season yet, the pipeline automatically fetches equivalent stats from ESPN's game summaries. The ESPN fallback produces identical CSV schemas so all downstream processing works without changes.
 
 ## Project Structure
 
@@ -40,9 +41,10 @@ nfl-fantasy-draft-analyzer/
     update-data.yml              # GitHub Actions: weekly pipeline + Pages deploy
   scripts/
     config.py                    # Auto-detect season, scoring, draft settings
-    01_clean.py                  # Download + clean NFL stats via nfl_data_py
+    01_clean.py                  # Download + clean NFL stats (nflverse or ESPN)
     02_transform.py              # Calculate fantasy points, rankings, build JSON
     03_fetch_adp.py              # Optional: fetch ADP + player data from Sleeper API
+    espn_fallback.py             # ESPN API fallback when nflverse is unavailable
   data/
     raw/                         # Cached raw downloads (git-ignored)
     cleaned/                     # Cleaned CSVs (git-ignored)
@@ -99,16 +101,20 @@ No manual config changes needed between seasons. To force a specific season:
 ```bash
 # Environment variable overrides
 NFL_SEASON_YEAR=2024 NFL_MODE=static python scripts/01_clean.py
+
+# Force ESPN as data source
+NFL_SEASON_YEAR=2025 NFL_MODE=static NFL_DATA_SOURCE=espn python scripts/01_clean.py
 ```
 
 Or use the GitHub Actions manual trigger with the override fields.
 
 ## Data Sources
 
-| Source | Format | What It Provides |
-|---|---|---|
-| nflverse (via nfl_data_py) | CSV/DataFrame | Seasonal stats, weekly stats, play-by-play, roster data |
-| Sleeper API | JSON | Player metadata, ADP estimates, injury status, season state |
+| Source | Format | What It Provides | Role |
+|---|---|---|---|
+| nflverse (via nfl_data_py) | CSV/DataFrame | Seasonal stats, weekly stats, play-by-play, roster data | Primary |
+| ESPN API | JSON | Game box scores, player stats, kicker/defense stats, rosters | Fallback (when nflverse unavailable) |
+| Sleeper API | JSON | Player metadata, ADP estimates, injury status, season state | Enrichment (optional) |
 
 ## Scoring Formats
 
@@ -120,7 +126,7 @@ Or use the GitHub Actions manual trigger with the override fields.
 
 | Skill | How |
 |---|---|
-| Data Engineering | Config-driven ETL pipeline with auto season detection, static/live modes, graceful degradation |
+| Data Engineering | Config-driven ETL pipeline with auto season detection, multi-source fallback, static/live modes, graceful degradation |
 | Data Cleansing | Normalizing multi-source NFL data across seasonal and weekly granularities |
 | Fantasy Analytics | Custom scoring calculations, consistency metrics, positional scarcity, VOR auction values |
 | Visualization | Interactive single-file dashboard with Chart.js, responsive design, mock draft simulator |
@@ -128,4 +134,4 @@ Or use the GitHub Actions manual trigger with the override fields.
 
 ## License
 
-NFL data provided by nflverse under MIT license. ADP data from Sleeper API (public, no auth required). Analysis and code are MIT.
+NFL data provided by nflverse under MIT license. ESPN data from ESPN's public API (unofficial, no auth required). ADP data from Sleeper API (public, no auth required). Analysis and code are MIT.
